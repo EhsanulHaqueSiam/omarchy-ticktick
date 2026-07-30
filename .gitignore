@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Credentials — the helper writes these to ~/.config/ticktick/, never here,
+# but refuse to ship them by accident all the same.
+credentials.json
+.env
+*.token
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Local scratch
+/tmp/
+*.log
