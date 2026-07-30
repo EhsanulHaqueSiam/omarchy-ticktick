@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  helper:
+    name: Helper (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Byte-compile (syntax gate)
+        run: python -m compileall -q ticktick bin tests
+
+      - name: Unit and end-to-end tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Offline selftest
+        run: python bin/ticktick selftest
+
+      - name: CLI smoke test
+        env:
+          # Keep the runner's real HOME out of it: these commands write a
+          # credential store and a task cache.
+          XDG_CONFIG_HOME: ${{ runner.temp }}/config
+          XDG_STATE_HOME: ${{ runner.temp }}/state
+        run: |
+          # No credentials in CI: every subcommand must still answer with
+          # structured JSON rather than a traceback, and exit 0 doing it.
+          for cmd in "tasks" "projects" "status" "sync" "tags" "search x" \
+                     "complete abc" "delete abc" "add hello" "item add abc step"; do
+            out=$(python bin/ticktick --json $cmd) || { echo "non-zero exit: $cmd"; exit 1; }
+            echo "$cmd -> $out"
+            echo "$out" | python -c "
+          import json,sys
+          d = json.load(sys.stdin)
+          assert isinstance(d, dict) and 'ok' in d, d
+          if d['ok'] is False:
+              assert d['error'] in {'auth','network','api','usage','notfound'}, d
+          "
+          done
+
+      - name: Piped output is JSON, forced output is text
+        env:
+          XDG_CONFIG_HOME: ${{ runner.temp }}/config
+          XDG_STATE_HOME: ${{ runner.temp }}/state
+        run: |
+          # The widget relies on a pipe yielding exactly one JSON object.
+          python bin/ticktick parse "pay rent tomorrow !high" | python -c "
+          import json,sys; json.loads(sys.stdin.read())"
+          python bin/ticktick parse "pay rent tomorrow !high" --text | grep -q "pay rent"
+
+  manifest:
+    name: Plugin manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Manifest is valid JSON and matches the Omarchy plugin schema
+        run: python tests/validate_manifest.py
+
+      - name: Every Omarchy singleton member the QML uses exists
+        # qmllint cannot check these: Style.spacing and Style.font are inline
+        # QtObjects, so it flags valid members and typos identically.
+        run: python tests/validate_qml_api.py
+
+  qml:
+    name: QML syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qmllint
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qt6-declarative-dev-tools
+
+      - name: Lint QML
+        run: |
+          # The Omarchy/Quickshell import namespaces (qs.Ui, qs.Commons,
+          # Quickshell.*) only exist on a live Omarchy box, so unresolved
+          # imports and their knock-on type warnings are expected here. This
+          # job is a syntax gate: it fails on parse errors only.
+          status=0
+          for f in qml/*.qml; do
+            if ! out=$(qmllint --compiler disable "$f" 2>&1); then
+              if echo "$out" | grep -qiE 'syntax|Expected token|Unexpected token'; then
+                echo "::error file=$f::QML syntax error"
+                echo "$out"
+                status=1
+              fi
+            fi
+          done
+          exit $status
