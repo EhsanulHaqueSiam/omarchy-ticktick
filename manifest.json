@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "id": "siam.ticktick",
+  "name": "TickTick",
+  "version": "1.0.0",
+  "author": "Ehsanul Haque Siam",
+  "license": "MIT",
+  "homepage": "https://github.com/EhsanulHaqueSiam/omarchy-ticktick",
+  "description": "TickTick tasks in the Omarchy bar — due counts, grouped views, natural-language quick add, complete, edit, and checklist toggles.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "qml/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "TickTick",
+    "description": "Overdue and due-today task count, with a keyboard-driven popup to browse, complete, edit, and quick-add tasks.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 300,
+      "upcomingDays": 7,
+      "badgeMode": "Today",
+      "hideWhenEmpty": false,
+      "defaultView": "Today",
+      "defaultProject": "",
+      "showProjectChips": true,
+      "includeUndated": false,
+      "confirmDelete": true
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "description": "How often the widget polls TickTick. Actions refresh immediately regardless.",
+        "min": 30,
+        "max": 86400,
+        "step": 30,
+        "defaultValue": 300
+      },
+      {
+        "key": "upcomingDays",
+        "type": "integer",
+        "label": "Upcoming window (days)",
+        "description": "How far ahead the Next view reaches. 0 shows today only.",
+        "min": 0,
+        "max": 30,
+        "step": 1,
+        "defaultValue": 7
+      },
+      {
+        "key": "badgeMode",
+        "type": "enum",
+        "label": "Bar badge counts",
+        "description": "Which tasks the number next to the bar icon counts.",
+        "options": [
+          "Today",
+          "Overdue",
+          "All",
+          "None"
+        ],
+        "defaultValue": "Today"
+      },
+      {
+        "key": "defaultView",
+        "type": "enum",
+        "label": "Default view",
+        "description": "Which view the popup opens on.",
+        "options": [
+          "Today",
+          "Next",
+          "All",
+          "Projects"
+        ],
+        "defaultValue": "Today"
+      },
+      {
+        "key": "defaultProject",
+        "type": "string",
+        "label": "Quick-add project id",
+        "description": "Project id new tasks go to. Leave blank for your Inbox. Run 'ticktick projects' to list ids.",
+        "defaultValue": ""
+      },
+      {
+        "key": "hideWhenEmpty",
+        "type": "boolean",
+        "label": "Hide when nothing is due",
+        "description": "Remove the widget from the bar entirely while the badge count is zero.",
+        "defaultValue": false
+      },
+      {
+        "key": "showProjectChips",
+        "type": "boolean",
+        "label": "Show project names",
+        "description": "Show which project each task belongs to on its row.",
+        "defaultValue": true
+      },
+      {
+        "key": "includeUndated",
+        "type": "boolean",
+        "label": "Include undated tasks",
+        "description": "Show tasks with no due date in the All view.",
+        "defaultValue": false
+      },
+      {
+        "key": "confirmDelete",
+        "type": "boolean",
+        "label": "Confirm before deleting",
+        "description": "Deleting a task is permanent and cannot be undone through the API.",
+        "defaultValue": true
+      }
+    ]
+  }
+}
