@@ -41,6 +41,12 @@ TickTick's own rules, in the bar.
 - `ticktick edit --remind / --clear-remind / --repeat / --clear-repeat`, so everything the
   detail pane can change is reachable from a terminal too.
 
+- **The Omarchy version this needs is written down.** Omarchy 4 ("Quattro") on Quickshell
+  0.3.x, and nothing older: 4.0 is the first version with a Quickshell shell *and* the first
+  with third-party plugins — they arrived together, so there is no earlier version this could
+  have run on. Omarchy 3.x has no `shell/` directory and no `omarchy plugin` command at all.
+  Quattro is still unreleased at the time of writing; it ships as the `omarchy-dev` package.
+
 ### Fixed
 
 - **The checkbox no longer ticks itself under the cursor.** The box previewed what

@@ -9,7 +9,8 @@
 <p align="center">
   <a href="https://github.com/EhsanulHaqueSiam/omarchy-ticktick/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/EhsanulHaqueSiam/omarchy-ticktick/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8aadf4?style=flat-square"></a>
-  <a href="https://omarchy.org/"><img alt="Omarchy plugin" src="https://img.shields.io/badge/omarchy-shell%20plugin-f5a97f?style=flat-square"></a>
+  <a href="https://omarchy.org/"><img alt="Omarchy 4 (Quattro) shell plugin" src="https://img.shields.io/badge/omarchy-4%20%22Quattro%22%2B-f5a97f?style=flat-square"></a>
+  <img alt="Quickshell 0.3.x" src="https://img.shields.io/badge/quickshell-0.3.x-8bd5ca?style=flat-square">
   <a href="https://www.python.org/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-a6da95?style=flat-square"></a>
   <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-c6a0f6?style=flat-square">
 </p>
@@ -47,6 +48,40 @@
 Sections follow the sort: **by list** is the default, the way TickTick groups a smart
 list. <kbd>o</kbd> cycles to date (Overdue / Today / Tomorrow), priority or title.
 Notes render with a **▤** and never reach the badge — only to-dos are counted.
+
+## Requirements
+
+> [!IMPORTANT]
+> **Omarchy 4 ("Quattro") or newer — which is not released yet.** Omarchy 3.x cannot run
+> this plugin, and no flag or backport changes that: it has no shell to load it into.
+
+| | Needed | Why |
+|---|---|---|
+| **Omarchy** | **4.0** — today that means the `quattro` branch tip, version `4.0.0.alpha` | 4.0 is the first version with a Quickshell shell *and* the first with third-party plugins. Both arrived together, so 4.0 is also the earliest version this could ever have supported. |
+| **Quickshell** | **0.3.x** — Omarchy's own `quickshell-git` build (`0.3.0.r18` or newer) | The widget is QML against the `qs.Ui` / `qs.Commons` singletons the Omarchy shell publishes. Omarchy's `omarchy-restart-shell` needs the git build specifically: release 0.3.0's `quickshell kill` returns before the shell has exited. |
+| **Plugin manifest** | `schemaVersion: 1`, `kinds: ["bar-widget"]` | The contract this plugin's [`manifest.json`](manifest.json) is written against. The registry rejects any other `schemaVersion` outright — it is an exact match, not a floor. |
+| **Python** | 3.11+, standard library only | The `ticktick` helper. Omarchy already has it. |
+
+Why 3.x is a hard no: Omarchy replaced Waybar with a Quickshell shell in
+[Omarchy 4](https://github.com/basecamp/omarchy/pull/6231), and third-party plugins are a
+feature *of that shell*. The v3.8.4 tree — the newest stable release as of July 2026 —
+contains neither a `shell/` directory nor an `omarchy plugin` command, so on 3.x there is
+nothing to install into.
+
+<details>
+<summary>Checking what you are on, and getting Quattro if you are not</summary>
+
+```bash
+omarchy version                 # 4.0.0.r… means you are on Quattro
+cat /usr/share/omarchy/version  # 4.0.0.alpha
+omarchy plugin list             # if this errors, your Omarchy is too old
+```
+
+Quattro is unreleased and ships as the `omarchy-dev` package — *"Arch Linux by DHH
+(quattro branch tip)"* — from Omarchy's own pacman repo. It tracks a moving branch, so
+expect it to move under you. Once Omarchy 4 is tagged, the stable package is the one you
+want, and this table becomes "Omarchy 4.0 or newer" with nothing else to think about.
+</details>
 
 ## Install
 

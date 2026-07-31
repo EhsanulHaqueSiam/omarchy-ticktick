@@ -19,6 +19,11 @@ please keep it that way.
 
 ## Development loop
 
+The Python half needs nothing but Python 3.11+. Anything that loads QML — the smoke test,
+the screenshots, the plugin itself — needs **Omarchy 4 ("Quattro") on Quickshell 0.3.x**,
+because it binds to the `qs.Ui` / `qs.Commons` singletons that shell publishes. Omarchy 3.x
+has no shell to load a plugin into; see [Requirements](README.md#requirements).
+
 ```bash
 git clone https://github.com/EhsanulHaqueSiam/omarchy-ticktick.git
 cd omarchy-ticktick
