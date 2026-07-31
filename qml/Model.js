@@ -86,6 +86,16 @@ function isNote(row) {
   return String(r.kind || "").toUpperCase() === "NOTE"
 }
 
+// Finished work. `status` is TickTick's own flag — 0 is open, 2 is done, and the
+// abandoned states are also not open — and rows fetched from the completed endpoint
+// are stamped `bucket: "completed"` by the helper regardless of what status says.
+// Either one on its own is enough; a row that is done must never paint as open.
+function isDone(row) {
+  var r = row || {}
+  if (toInt(r.status) > 0) return true
+  return squish(r.bucket).toLowerCase() === "completed"
+}
+
 function priorityLabel(priority) {
   return PRIORITY_LABELS[toInt(priority)] || ""
 }
@@ -272,6 +282,7 @@ if (typeof module !== "undefined") {
     sectionKey: sectionKey,
     sectionLabel: sectionLabel,
     isNote: isNote,
+    isDone: isDone,
     tagList: tagList,
     tagText: tagText,
     dateSeed: dateSeed,

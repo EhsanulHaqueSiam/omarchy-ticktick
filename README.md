@@ -146,6 +146,7 @@ ticktick login --api-base https://api.dida365.com/open/v1
 |---|---|
 | Bar button | left = popup · right = refresh now · middle = jump to quick-add |
 | Task row | click the checkbox = complete · click the title = expand detail |
+| Finished row | ticked and struck through, dated by when you finished it; nothing to click, because TickTick's API cannot reopen it |
 | Expanded detail | tick a subtask · remove one with the ✕ that appears · pick a list, repeat or reminder |
 | Note row | opens like any other; it has no checkbox, because a note is not a task |
 
@@ -335,7 +336,7 @@ omarchy bar plugin set siam.ticktick hideWhenEmpty true --json
 | `defaultView` | Today / Tomorrow / Next / Inbox / All / Lists / Completed | `Today` | which view the popup opens on |
 | `defaultProject` | project id | `""` | where quick-add files tasks (blank = Inbox) |
 | `hideWhenEmpty` | bool | `false` | remove the widget from the bar when the badge is 0 |
-| `showProjectChips` | bool | `true` | show each task's project on its row |
+| `showProjectChips` | bool | `true` | show each task's project on its row, where the section heading does not already say it |
 | `includeUndated` | bool | `false` | include tasks with no due date in **All** |
 | `confirmDelete` | bool | `true` | confirm before deleting (deletion is permanent) |
 

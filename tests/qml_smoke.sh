@@ -200,6 +200,14 @@ ShellRoot {
         }
         console.log("SMOKE note=" + (note ? note.title : "none"))
         if (note) subject.completeAt(note)
+        // A finished task must refuse to be completed twice. The Done view paints it
+        // with this same delegate, so Enter and the checkbox both reach here, and the
+        // Open API cannot undo it — dropping the row would report a change that the
+        // next refresh puts straight back.
+        var kept = subject.rowCount
+        subject.service.complete({ id: "smoke-done", title: "already finished", status: 2 })
+        console.log("SMOKE donekept=" + (subject.rowCount === kept)
+                    + " status=" + subject.service.actionStatus)
         subject.dismiss()
         console.log("SMOKE done rows=" + subject.rowCount + " sort=" + subject.service.sort)
         quitTimer.running = true
@@ -265,6 +273,8 @@ grep -q "SMOKE done .* sort=list" "$WORK/clean.log" \
   || fail "cycling the sort four times did not return to where it started"
 grep -q "SMOKE confirmOpen=true" "$WORK/clean.log" \
   || fail "the delete confirmation never opened"
+grep -q "SMOKE donekept=true status=Already done" "$WORK/clean.log" \
+  || { cat "$WORK/clean.log"; fail "a finished task was completed again"; }
 grep -q "SMOKE settings hideWhenEmpty=false showProjectChips=true confirmDelete=true" \
   "$WORK/clean.log" || fail "string settings were not coerced to booleans"
 

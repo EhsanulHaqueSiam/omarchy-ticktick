@@ -43,6 +43,25 @@ TickTick's own rules, in the bar.
 
 ### Fixed
 
+- **The checkbox no longer ticks itself under the cursor.** The box previewed what
+  <kbd>Enter</kbd> would do by filling in, which is indistinguishable from a task that is
+  actually finished — every row you pointed at read as already done. The box now says what the
+  task *is*; the cursor sharpens the empty box instead of filling it.
+- **Finished work looks finished.** A completed task renders ticked, dimmed and struck through
+  the way a ticked subtask always has, dated by when it was *completed* rather than when it was
+  due. Completing one again is refused rather than dropping the row and reporting a change that
+  never happened — the Open API cannot reopen a task or even look one up once it is closed.
+- **The row stops jumping when the pointer crosses it.** The delete ✕ was revealed by width, and
+  a `Row` drops an invisible child's width *and* its spacing, so the due date, the priority dot
+  and the list chip all slid sideways under a pointer that was aiming at one of them. The ✕ now
+  holds its slot and fades, and it burns urgent only under its own pointer instead of on every
+  row you happen to hover.
+- **The list name is not printed twice.** Under the default sort the section heading above a row
+  already *is* its list, so the chip repeated it — `INBOX` over a row chipped `Inbox`. The chip
+  now shows only where it says something new: not under list headings, not inside the Inbox, and
+  not inside a single list.
+- **Every shortcut in the hint line is readable.** Ten of them do not fit across the popup on one
+  line, and eliding hid everything after `f filter` behind an ellipsis. It wraps.
 - **Notes and single-list views no longer distort the badge.** Counts are computed over the
   whole account regardless of the view, so browsing into a list stops changing what the number
   means. Every view is still exactly one request.

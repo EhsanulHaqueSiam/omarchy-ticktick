@@ -96,6 +96,19 @@ test("a note is a note however the row spells it", () => {
   assert.strictEqual(Model.isNote(undefined), false)
 })
 
+// The checkbox, the strikethrough and the guard that refuses to "complete" finished
+// work all hang off this one answer. An open task reading as done is what the cursor
+// used to fake; a done task reading as open re-completes it on Enter.
+test("done is read from status or from the completed bucket", () => {
+  assert.strictEqual(Model.isDone({ status: 2 }), true)
+  assert.strictEqual(Model.isDone({ status: "2" }), true, "a row can arrive stringly typed")
+  assert.strictEqual(Model.isDone({ status: 0, bucket: "completed" }), true,
+    "the completed endpoint's rows are stamped by the helper, whatever status says")
+  assert.strictEqual(Model.isDone({ status: 0, bucket: "today" }), false)
+  assert.strictEqual(Model.isDone({}), false, "a row with no status is open")
+  assert.strictEqual(Model.isDone(undefined), false)
+})
+
 test("sections break on identity and are headed by name", () => {
   const a = { projectId: "p1", project: "Work", bucket: "today" }
   const b = { projectId: "p2", project: "Work", bucket: "today" }

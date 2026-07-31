@@ -50,6 +50,14 @@ Panel {
 
   readonly property bool hideWhenEmpty: tt.boolSetting("hideWhenEmpty", false)
   readonly property bool showProjectChips: tt.boolSetting("showProjectChips", true)
+  // …and whether the chip is telling the reader anything. Under the default sort the
+  // section heading above the row IS the list name, and inside the Inbox or one list
+  // every row shares it — so the chip printed "Inbox" under a heading reading INBOX.
+  // TickTick does not repeat it there either.
+  readonly property bool chipsUseful: showProjectChips
+                                      && tt.effectiveSort !== "list"
+                                      && tt.view !== "inbox"
+                                      && !(tt.view === "project" && tt.projectFilter !== "")
   readonly property bool confirmDelete: tt.boolSetting("confirmDelete", true)
 
   // --- cursor / mode state ----------------------------------------------
@@ -907,7 +915,7 @@ Panel {
                     width: parent.width
                     task: entry.modelData
                     expanded: widget.expandedId === entry.rowId
-                    showProjectChip: widget.showProjectChips
+                    showProjectChip: widget.chipsUseful
                     hasCursor: entry.onCursor
                     foreground: widget.foreground
                     fontFamily: widget.fontFamily
@@ -978,7 +986,10 @@ Panel {
             font.family: widget.fontFamily
             font.pixelSize: Style.font.caption
             horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideRight
+            // Wraps rather than elides: ten shortcuts do not fit across the popup on
+            // one line, and eliding hid every one after "f filter" behind an ellipsis —
+            // a legend nobody can read is worse than one that costs a second line.
+            wrapMode: Text.WordWrap
           }
         }
       }

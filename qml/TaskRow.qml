@@ -28,7 +28,12 @@ CursorSurface {
   readonly property var row: task || ({})
   readonly property string titleText: Model.squish(row.title) || "Untitled task"
   readonly property string projectName: Model.squish(row.project)
-  readonly property string dueText: Model.squish(row.dueLabel)
+  // What a finished task's date means is when it was finished, not when it was due.
+  // `completedLabel` only exists on rows from the completed endpoint, so the due
+  // date still stands in for anything else that reads as done.
+  readonly property string dueText: root.done
+    ? (Model.squish(row.completedLabel) || Model.squish(row.dueLabel))
+    : Model.squish(row.dueLabel)
   readonly property string progressText: Model.checklistProgress(row.itemsDone, row.itemsTotal)
   readonly property int priority: Model.toInt(row.priority)
   readonly property bool overdue: Model.squish(row.bucket).toLowerCase() === "overdue"
@@ -36,6 +41,11 @@ CursorSurface {
   // A note is something to read. TickTick gives it no checkbox and no completion,
   // so the row shows a page glyph and the click that would tick it does nothing.
   readonly property bool note: Model.isNote(row)
+  // Finished work — the Done view paints it with this same delegate.
+  readonly property bool done: Model.isDone(row)
+  // Only an open to-do has anything to tick. A note cannot be completed and a
+  // finished task cannot be reopened: the Open API cannot even look one up again.
+  readonly property bool checkable: !note && !done
 
   // A project colour comes from the account, so it can be anything or nothing.
   // Anything that is not an obvious hex falls back to the theme rather than
@@ -62,10 +72,13 @@ CursorSurface {
     anchors.left: parent.left
     anchors.leftMargin: Style.spacing.rowPaddingX
     anchors.verticalCenter: parent.verticalCenter
-    // Ticks under the cursor so the row previews what Enter / a click does — but a
-    // note has nothing to preview, so it keeps its own glyph throughout.
-    text: root.note ? "󰎞" : (root.hasCursor ? "󰄲" : "󰄱")
-    color: root.note ? root.dim : (root.hasCursor ? root.foreground : root.dim)
+    // The box says what the task IS, never what the cursor would do to it. It used to
+    // tick itself under the cursor as a preview of Enter, which is indistinguishable
+    // from a task that is actually finished — every row you pointed at read as done.
+    text: root.note ? "󰎞" : (root.done ? "󰄲" : "󰄱")
+    // The cursor sharpens the empty box instead: same glyph, more contrast, which is
+    // an affordance rather than a claim about the task.
+    color: root.checkable && root.hasCursor ? root.foreground : root.dim
     font.family: root.fontFamily
     font.pixelSize: Style.font.subtitle
 
@@ -73,7 +86,7 @@ CursorSurface {
       anchors.fill: parent
       anchors.margins: -Style.spacing.sm
       hoverEnabled: true
-      enabled: !root.note
+      enabled: root.checkable
       cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
       onContainsMouseChanged: if (containsMouse) root.hovered(true)
       onClicked: root.completeRequested()
@@ -89,9 +102,12 @@ CursorSurface {
     anchors.verticalCenter: parent.verticalCenter
     text: root.titleText
     textFormat: Text.PlainText
-    color: root.foreground
+    // Struck through and stepped back, the same way a ticked checklist item reads in
+    // the detail pane. Done work is still worth seeing; it is not worth reading twice.
+    color: root.done ? root.dim : root.foreground
     font.family: root.fontFamily
     font.pixelSize: Style.font.body
+    font.strikeout: root.done
     elide: Text.ElideRight
   }
 
@@ -169,20 +185,32 @@ CursorSurface {
 
     Item {
       id: deleteAction
-      visible: root.hasCursor
-      width: visible ? Style.space(16) : 0
+      // Always holds its slot and fades instead of appearing: a Row drops an invisible
+      // child's width AND its spacing, so revealing this on hover slid the due date,
+      // the priority dot and the chip left the moment the pointer crossed the row —
+      // under a pointer that was aiming at one of them.
+      width: Style.space(16)
       height: Style.space(16)
       anchors.verticalCenter: parent.verticalCenter
+      opacity: root.hasCursor ? 1 : 0
+
+      Behavior on opacity {
+        NumberAnimation { duration: 80 }
+      }
 
       Text {
         anchors.centerIn: parent
         text: "󰅙"
-        color: root.urgent
+        // Red only under its own pointer. Burning urgent on every row you happen to
+        // hover reads as an alarm about the task rather than an offer to delete it,
+        // and it out-shouted the overdue dates that are the actual warning.
+        color: deleteHover.containsMouse ? root.urgent : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
 
       MouseArea {
+        id: deleteHover
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor

@@ -238,6 +238,14 @@ Item {
       toast("Notes cannot be completed")
       return
     }
+    if (Model.isDone(row)) {
+      // The Done view paints finished work with the same delegate, so Enter on a row
+      // there lands here. Completing it again would drop it from the list and report
+      // a change that never happened — and the Open API cannot undo it either, since
+      // a closed task cannot be looked up at all.
+      toast("Already done")
+      return
+    }
     dropTask(row.id)
     toast("Completed " + Model.elide(row.title, 40))
     enqueue(["complete", row.id].concat(scopeArgs(row)))
