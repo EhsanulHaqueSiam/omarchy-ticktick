@@ -4,6 +4,114 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+TickTick's own rules, in the bar.
+
+### Added
+
+- **The full set of smart lists** — Today, Tomorrow, Next 7, Inbox, All, Lists and Done, on
+  <kbd>1</kbd>–<kbd>7</kbd> and in the tab strip. Today is what is due today *plus* whatever is
+  late, Tomorrow is tomorrow alone, and a list is not a date filter at all, so the Inbox shows
+  its undated tasks the way TickTick does.
+- **Sections are your lists.** Rows group under the list they belong to, which is TickTick's
+  default for a smart list. <kbd>o</kbd> cycles to grouping by date, priority or title —
+  `--sort list|time|priority|title` on the CLI — and the headings follow the order.
+- **Folders.** Lists nest under their folder in the Lists tab, read from the `groupId` that
+  `/project` already sends. The folder *names* come from an undocumented endpoint, so losing it
+  costs the headings and nothing else.
+- **Notes are not tasks.** A note (`kind: NOTE`) renders with a ▤ glyph, has no checkbox, cannot
+  be completed, and is excluded from the bar badge, the bucket counts and every list count.
+- **Filtering** by priority and tag from the popup, on <kbd>f</kbd>.
+- **A sync key.** <kbd>s</kbd> pushes anything queued and refetches now. <kbd>r</kbd> stays
+  cache-first, which is what makes it instant.
+- **Browser sign-in leads.** "Sign in with browser" is the first button in the signed-out
+  panel and runs the OAuth flow in a terminal of its own; the API-token field is folded
+  away behind it as the fallback. `ticktick auth` now asks for the Client ID it needs
+  rather than failing with instructions to carry back to a shell, and remembers it.
+- **A new task appears on the keystroke.** It is written to the local cache before the
+  helper is even launched, instead of waiting on two process launches and a round trip.
+  A task typed inside Today takes today's date and one typed inside a list joins that
+  list, so it appears where it was typed — `add --due-default WHEN` on the CLI.
+- Real screenshots in the README, rendered from a live Quickshell against the fake
+  account by `tests/screenshots.sh`, so they cannot drift from the code.
+- **Full task editing in the detail pane** — due date, start date, tags, repeat, reminder, list,
+  and adding or removing subtasks, all without leaving the keyboard. Dates take the same natural
+  language quick-add does.
+- `ticktick edit --remind / --clear-remind / --repeat / --clear-repeat`, so everything the
+  detail pane can change is reachable from a terminal too.
+
+### Fixed
+
+- **Notes and single-list views no longer distort the badge.** Counts are computed over the
+  whole account regardless of the view, so browsing into a list stops changing what the number
+  means. Every view is still exactly one request.
+- **Dates no longer drift across a DST change.** `dates.now()` carried a *frozen* UTC offset —
+  today's — and due dates were converted through it, so every timed task past the next
+  transition rendered an hour out and anything near local midnight landed in the wrong day
+  group, for weeks either side, twice a year.
+- **A queued write is never silently thrown away.** A captive portal or proxy login page answers
+  200 with HTML, which arrived as a verdict-less error and burned an attempt budget; eight polls
+  destroyed the queued mutation. Attempts are spent by activity, not by time, so the cap is gone
+  and the queue is bounded by age instead.
+- **A write the server refuses is reported.** Dropping a rejected entry set no error, so `add`
+  answered `ok: true` with an empty warning for a task that will never exist.
+- **Work the server already accepted is not sent twice.** The flush at the top of a command was
+  only persisted if the rest of the command succeeded, so a later failure re-queued creates that
+  had already landed — and creates are not idempotent.
+- **A queued edit no longer reverts fields it never touched.** TickTick has no PATCH, so the
+  body replaces the task; a retry now re-reads the task first rather than shipping the snapshot
+  frozen when the command ran.
+- **A subtask created offline finds its parent.** The id remapper walked three named keys, so a
+  `local-` `parentId` inside a create body was uploaded verbatim as an id no client can resolve.
+- **A create lands in the cache even when the cache was empty**, instead of being appended to a
+  throwaway list — which left the following queued operation addressing a task with no project.
+- **The popup no longer goes permanently deaf** after moving a task between lists. Committing
+  the change destroyed the delegate that owned the "a dropdown has the keyboard" flag before it
+  could clear it, and nothing else ever did.
+- **A second sign-in attempt actually sends the token.** stdin was disabled imperatively after
+  the first attempt and never re-enabled, so every retry failed with a token that never left the
+  widget.
+- **Multi-monitor bars stay in step.** A completion on one screen now fans out when the write
+  settles, rather than leaving every other screen counting it for up to five minutes.
+- **Signing in over a borrowed token works.** The marker that keeps another TickTick
+  tool's token from being written down here also discarded a token the user had just
+  signed in with, so `login` and `auth` reported success and changed nothing.
+- **A lapsed token no longer throws the write away.** A mutation made while signed in
+  but expired is now applied locally and queued — like being offline — instead of being
+  abandoned before it was ever written down. Never having signed in is still an error,
+  because there is no account for a queue to drain into.
+- **An entry another process queued is not sent twice.** `save` merges in work it did
+  not know about, but never recorded having seen it, so the next save merged it back in
+  after it had synced.
+- **An empty Inbox shows nothing**, rather than the user's entire account under the
+  heading "Inbox" — an unknown Inbox id was being read as "no filter".
+- **A rate-limit backoff is really capped.** The 5-minute ceiling was applied to the
+  number reported, not to the stored stamp the write gate reads, so a clock jump could
+  freeze every write for as long as the file claimed.
+- **The detail pane no longer renders blank checklists and reminders.** A nested array
+  reaches a row delegate as an array-*like* that fails `Array.isArray`, which silently
+  discarded every checklist item and every reminder in the expanded pane.
+- **Editing in the detail pane no longer kills the keyboard.** Leaving a field left the
+  window with no focused item, so the popup stopped answering keys until reopened.
+- The Done view sections by date rather than by list, because its rows are ordered by
+  when they were finished.
+- Two lists the catalogue does not know are no longer interleaved into one heading.
+- Deleting a note no longer decrements counts that never included it.
+- A task still being saved cannot be completed, deleted or edited through its
+  placeholder id — and a write the server refused now says so instead of reporting
+  success.
+- Hovering a partially-visible row no longer scrolls the list out from under the mouse.
+- Escaping out of a list no longer leaves the cursor past the end of the shorter list.
+- `ticktick auth` with a closed stdin prints its usage error instead of a traceback.
+
+### Testing
+
+- `tests/model.test.js` — the QML presentation helpers under `node --test`, with no
+  packages and no compositor, so CI covers them for the first time.
+- `tests/screenshots.sh` renders the README's images from a live Quickshell against the
+  fake account, so they cannot drift from the code.
+
 ## [1.0.0] — 2026-07-30
 
 First release.

@@ -66,7 +66,8 @@ def _width() -> int:
 
 def _render(command: str, payload: dict, s: Style, width: int) -> str:
     if payload.get("ok") is False:
-        return s(RED, f"error ({payload.get('error', 'api')}): ") + str(payload.get("message", ""))
+        # API error bodies land here verbatim; they are remote text like any other.
+        return s(RED, f"error ({payload.get('error', 'api')}): ") + _safe(payload.get("message", ""))
 
     if command in ("tasks", "search", "completed"):
         return _tasks(payload, s, width)
@@ -85,16 +86,16 @@ def _render(command: str, payload: dict, s: Style, width: int) -> str:
     if command in ("check", "item"):
         return _checklist(payload, s, width)
     if command == "complete":
-        return s(GREEN, "✓ ") + f"completed {payload.get('id', '')}" + _pending(payload, s)
+        return s(GREEN, "✓ ") + f"completed {_safe(payload.get('id'))}" + _pending(payload, s)
     if command == "delete":
-        return s(RED, "✗ ") + f"deleted {payload.get('id', '')}" + _pending(payload, s)
+        return s(RED, "✗ ") + f"deleted {_safe(payload.get('id'))}" + _pending(payload, s)
     if command in ("login", "logout"):
-        return s(GREEN, str(payload.get("message", "ok")))
+        return s(GREEN, _safe(payload.get("message", "ok")))
     if command == "project":
         project = payload.get("project") or {}
         if payload.get("deleted"):
-            return s(RED, "✗ ") + f"deleted project {payload.get('id', '')}"
-        return s(GREEN, "✓ ") + f"{project.get('name', '')}  {s(DIM, project.get('id', ''))}"
+            return s(RED, "✗ ") + f"deleted project {_safe(payload.get('id'))}"
+        return s(GREEN, "✓ ") + f"{_safe(project.get('name'))}  {s(DIM, _safe(project.get('id')))}"
     return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
 
 
@@ -106,42 +107,69 @@ def _tasks(payload: dict, s: Style, width: int) -> str:
     if not rows:
         return s(DIM, "nothing to show") + _footer(payload, s)
 
+    # The payload arrives already in the order the caller asked for, and the heading
+    # follows the leading sort key so the sections match what the rows are grouped by.
+    # Only the default `time` order is re-sorted here, because an older helper (or the
+    # `completed` command, which has no `sort` at all) may hand rows over unordered.
+    sort = str(payload.get("sort") or "time")
+    if sort == "time":
+        rows = sorted(rows, key=lambda r: _BUCKET_ORDER.index(r.get("bucket", "undated"))
+                      if r.get("bucket") in _BUCKET_ORDER else 9)
+
     lines: list[str] = []
-    seen = ""
-    for row in sorted(rows, key=lambda r: _BUCKET_ORDER.index(r.get("bucket", "undated"))
-                      if r.get("bucket") in _BUCKET_ORDER else 9):
-        bucket = str(row.get("bucket") or "undated")
-        if bucket != seen:
-            seen = bucket
+    seen = object()
+    for row in rows:
+        head = _section(row, sort)
+        if head is not None and head[0] != seen:
+            seen = head[0]
             lines.append("")
-            lines.append(s(BOLD, _BUCKET_TITLES.get(bucket, bucket.upper())))
+            lines.append(s(BOLD, head[1]))
         lines.append(_task_row(row, s, width))
     return "\n".join(lines).strip("\n") + _footer(payload, s)
+
+
+def _section(row: dict, sort: str) -> tuple[str, str] | None:
+    """``(key, heading)`` a row opens, or None when this sort has no grouping.
+
+    The key is what decides where a section breaks and the heading is what is printed.
+    They differ for lists because two lists really can share a name, and grouping on
+    the name would file both under one heading and misreport where a task lives.
+    """
+    if sort == "list":
+        return (
+            _safe(row.get("projectId")),
+            _safe(row.get("project")).upper() or "NO LIST",
+        )
+    if sort == "time":
+        bucket = str(row.get("bucket") or "undated")
+        return bucket, _BUCKET_TITLES.get(bucket, bucket.upper())
+    return None  # sorted by priority or title: any heading would cut across the order
 
 
 def _task_row(row: dict, s: Style, width: int) -> str:
     color, mark = _PRIORITY_MARK.get(int(row.get("priority") or 0), ("", ""))
     done = row.get("bucket") == "completed"
-    box = s(GREEN, "☑") if done else "☐"
+    # A note has nothing to tick — TickTick gives it no checkbox either.
+    box = s(DIM, "▤") if row.get("isNote") else (s(GREEN, "☑") if done else "☐")
 
     right: list[str] = []
     if row.get("itemsTotal"):
         right.append(f"{row.get('itemsDone', 0)}/{row['itemsTotal']}")
     if row.get("project"):
-        right.append(str(row["project"]))
-    label = str(row.get("completedLabel") or row.get("dueLabel") or "")
+        right.append(_safe(row["project"]))
+    label = _safe(row.get("completedLabel") or row.get("dueLabel") or "")
     if label:
         right.append(s(RED if row.get("bucket") == "overdue" else DIM, label))
     if row.get("repeat"):
         right.append("↻")
     for tag in (row.get("tags") or [])[:3]:
-        right.append(s(BLUE, f"#{tag}"))
+        right.append(s(BLUE, f"#{_safe(tag)}"))
 
     tail = s(DIM, " · ").join(right)
     prefix = f"  {box} "
     if mark:
         prefix += s(color, mark) + " "
-    title = str(row.get("title") or "untitled")
+    title = _safe(row.get("title")) or "untitled"
 
     # Trim the title, never the metadata: the due date is why the row is on screen.
     budget = width - _visible(prefix) - _visible(tail) - 3
@@ -150,6 +178,23 @@ def _task_row(row: dict, s: Style, width: int) -> str:
     pad = max(1, width - _visible(prefix) - len(title) - _visible(tail) - 1)
     line = prefix + title + (" " * pad) + tail
     return s(DIM, line) if done else line
+
+
+#: C0 and C1 control characters, which is everything a terminal acts on rather than
+#: prints. ESC is the one that matters: it opens colour, cursor-movement and OSC
+#: sequences alike.
+_CONTROL = {c: None for c in list(range(0x00, 0x20)) + [0x7F] + list(range(0x80, 0xA0))}
+
+
+def _safe(value: Any) -> str:
+    """Text from the account, made safe to write to a terminal.
+
+    A task title is arbitrary text somebody typed — possibly somebody else, on a
+    shared list. Written raw, an embedded escape sequence can recolour the rest of
+    the output, move the cursor to overwrite earlier lines, or set the window title.
+    Stripping the control range costs nothing and makes the whole class impossible.
+    """
+    return str(value if value is not None else "").translate(_CONTROL)
 
 
 def _visible(text: str) -> int:
@@ -185,7 +230,7 @@ def _footer(payload: dict, s: Style) -> str:
 
 
 def _short(text: str, limit: int = 72) -> str:
-    one_line = " ".join(text.split())
+    one_line = " ".join(_safe(text).split())
     return one_line if len(one_line) <= limit else one_line[: limit - 1] + "…"
 
 
@@ -193,10 +238,10 @@ def _projects(payload: dict, s: Style) -> str:
     rows = payload.get("projects") or []
     if not rows:
         return s(DIM, "no projects")
-    pad = max((len(str(p.get("name", ""))) for p in rows), default=0)
+    pad = max((len(_safe(p.get("name", ""))) for p in rows), default=0)
     lines = [
-        f"  {str(p.get('name', '')):<{pad}}  {s(DIM, str(p.get('count', 0)).rjust(3))}"
-        f"  {s(DIM, str(p.get('id', '')))}"
+        f"  {_safe(p.get('name', '')):<{pad}}  {s(DIM, str(p.get('count', 0)).rjust(3))}"
+        f"  {s(DIM, _safe(p.get('id', '')))}"
         for p in rows
     ]
     return "\n".join(lines) + _footer(payload, s)
@@ -214,13 +259,13 @@ def _tags(payload: dict, s: Style) -> str:
             kids.setdefault(str(tag["parent"]), []).append(tag)
     lines = []
     for tag in roots:
-        lines.append("  " + s(BLUE, "#" + str(tag.get("label") or tag.get("name"))))
+        lines.append("  " + s(BLUE, "#" + _safe(tag.get("label") or tag.get("name"))))
         for kid in kids.get(str(tag.get("name")), []):
-            lines.append("    " + s(DIM, "#" + str(kid.get("label") or kid.get("name"))))
+            lines.append("    " + s(DIM, "#" + _safe(kid.get("label") or kid.get("name"))))
     for parent, group in kids.items():
         if not any(t.get("name") == parent for t in roots):
             for kid in group:  # an orphan whose parent is gone still deserves a line
-                lines.append("  " + s(BLUE, "#" + str(kid.get("label") or kid.get("name"))))
+                lines.append("  " + s(BLUE, "#" + _safe(kid.get("label") or kid.get("name"))))
     return "\n".join(lines)
 
 
@@ -245,8 +290,8 @@ def _status(payload: dict, s: Style) -> str:
 def _sync(payload: dict, s: Style) -> str:
     lines = [f"synced {payload.get('synced', 0)}, {payload.get('pending', 0)} pending"]
     for entry in payload.get("outbox") or []:
-        lines.append(s(DIM, f"  {entry.get('op')} {entry.get('taskId')} "
-                            f"(attempt {entry.get('attempts')}) {entry.get('error', '')}"))
+        lines.append(s(DIM, f"  {_safe(entry.get('op'))} {_safe(entry.get('taskId'))} "
+                            f"(attempt {entry.get('attempts')}) {_short(_safe(entry.get('error', '')))}"))
     if payload.get("retryAfter"):
         lines.append(s(YELLOW, f"  rate limited — retrying in {payload['retryAfter']:.0f}s"))
     if payload.get("warning"):
@@ -256,11 +301,11 @@ def _sync(payload: dict, s: Style) -> str:
 
 def _parse(payload: dict, s: Style) -> str:
     rows = [
-        ("title", payload.get("title", "")),
-        ("due", payload.get("dueLabel") or payload.get("due") or "—"),
+        ("title", _safe(payload.get("title", ""))),
+        ("due", _safe(payload.get("dueLabel") or payload.get("due")) or "—"),
         ("all day", "yes" if payload.get("allDay") else "no"),
         ("priority", {5: "high", 3: "medium", 1: "low", 0: "none"}.get(payload.get("priority", 0), "none")),
-        ("project", payload.get("project") or "—"),
+        ("project", _safe(payload.get("project")) or "—"),
         ("repeat", payload.get("repeat") or "—"),
     ]
     lines = [f"  {s(DIM, key.rjust(9))}  {value}" for key, value in rows]
@@ -285,10 +330,10 @@ def _task_line(payload: dict, s: Style, width: int) -> str:
 
 def _checklist(payload: dict, s: Style, width: int) -> str:
     task = payload.get("task") or {}
-    lines = [str(task.get("title") or "")]
+    lines = [_safe(task.get("title"))]
     for item in payload.get("items") or []:
         box = s(GREEN, "☑") if item.get("done") else "☐"
-        title = str(item.get("title") or "")
+        title = _safe(item.get("title"))
         lines.append(f"  {box} " + (s(DIM, title) if item.get("done") else title))
     tail = _pending(payload, s)
     if tail:

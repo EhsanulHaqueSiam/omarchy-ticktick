@@ -33,6 +33,9 @@ CursorSurface {
   readonly property int priority: Model.toInt(row.priority)
   readonly property bool overdue: Model.squish(row.bucket).toLowerCase() === "overdue"
   readonly property color dim: Qt.darker(foreground, 1.5)
+  // A note is something to read. TickTick gives it no checkbox and no completion,
+  // so the row shows a page glyph and the click that would tick it does nothing.
+  readonly property bool note: Model.isNote(row)
 
   // A project colour comes from the account, so it can be anything or nothing.
   // Anything that is not an obvious hex falls back to the theme rather than
@@ -59,9 +62,10 @@ CursorSurface {
     anchors.left: parent.left
     anchors.leftMargin: Style.spacing.rowPaddingX
     anchors.verticalCenter: parent.verticalCenter
-    // Ticks under the cursor so the row previews what Enter / a click does.
-    text: root.hasCursor ? "󰄲" : "󰄱"
-    color: root.hasCursor ? root.foreground : root.dim
+    // Ticks under the cursor so the row previews what Enter / a click does — but a
+    // note has nothing to preview, so it keeps its own glyph throughout.
+    text: root.note ? "󰎞" : (root.hasCursor ? "󰄲" : "󰄱")
+    color: root.note ? root.dim : (root.hasCursor ? root.foreground : root.dim)
     font.family: root.fontFamily
     font.pixelSize: Style.font.subtitle
 
@@ -69,7 +73,8 @@ CursorSurface {
       anchors.fill: parent
       anchors.margins: -Style.spacing.sm
       hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
+      enabled: !root.note
+      cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
       onContainsMouseChanged: if (containsMouse) root.hovered(true)
       onClicked: root.completeRequested()
     }
@@ -83,6 +88,7 @@ CursorSurface {
     anchors.rightMargin: Style.spacing.md
     anchors.verticalCenter: parent.verticalCenter
     text: root.titleText
+    textFormat: Text.PlainText
     color: root.foreground
     font.family: root.fontFamily
     font.pixelSize: Style.font.body
@@ -110,6 +116,7 @@ CursorSurface {
         id: chipText
         anchors.centerIn: parent
         text: Model.elide(root.projectName, 14)
+        textFormat: Text.PlainText
         color: root.chipColor
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption

@@ -29,6 +29,23 @@ function toInt(value) {
   return isFinite(n) ? n : 0
 }
 
+// A real JS array for anything array-shaped.
+//
+// NOT `Array.isArray`. A Repeater over a `var` array hands each delegate its row as a
+// QVariant, and a nested array inside it arrives as a *sequence wrapper*: indexable,
+// with a length, and `constructor.name === "Array"` — but `Array.isArray()` says false.
+// Guarding on that therefore threw away every checklist and every reminder the moment
+// a row was read through `modelData`, which is the only way rows are ever read.
+function asList(value) {
+  if (value === undefined || value === null) return []
+  if (Array.isArray(value)) return value
+  // Strings are array-like too, and a string of characters is never what was meant.
+  if (typeof value !== "object" || typeof value.length !== "number") return []
+  var out = []
+  for (var i = 0; i < value.length; i++) out.push(value[i])
+  return out
+}
+
 function elide(text, max) {
   var value = squish(text)
   var limit = toInt(max)
@@ -41,6 +58,32 @@ function sectionTitle(bucket) {
   if (BUCKET_TITLES[key]) return BUCKET_TITLES[key]
   if (key === "") return "Tasks"
   return key.charAt(0).toUpperCase() + key.substring(1)
+}
+
+// What a row is grouped under, and what decides where a group breaks. The two
+// differ when grouping by list: two lists can share a name, so the break is keyed
+// on the id and only the heading uses the name. Sorting by priority or title has
+// no grouping — any heading would cut across the very order that was asked for.
+function sectionKey(row, sort) {
+  var r = row || {}
+  if (squish(sort) === "list") return "list:" + String(r.projectId || "")
+  if (squish(sort) === "time") return "time:" + String(r.bucket || "undated")
+  return ""
+}
+
+function sectionLabel(row, sort) {
+  var r = row || {}
+  if (squish(sort) === "list") return squish(r.project) || "No list"
+  if (squish(sort) === "time") return sectionTitle(r.bucket)
+  return ""
+}
+
+// A note is something to read, not something to do: TickTick gives it no checkbox,
+// so neither do we, and nothing counts it.
+function isNote(row) {
+  var r = row || {}
+  if (r.isNote === true) return true
+  return String(r.kind || "").toUpperCase() === "NOTE"
 }
 
 function priorityLabel(priority) {
@@ -128,7 +171,7 @@ function reminderLabel(reminder) {
 }
 
 function remindersLabel(reminders) {
-  var list = Array.isArray(reminders) ? reminders : []
+  var list = asList(reminders)
   var first = list.length > 0 ? reminderLabel(list[0]) : ""
   if (first === "") return ""
   return list.length > 1 ? first + " +" + (list.length - 1) : first
@@ -154,6 +197,41 @@ function pad2(value) {
 function plural(count, noun) {
   var n = toInt(count)
   return n + " " + noun + (n === 1 ? "" : "s")
+}
+
+// Tags round-trip through a single text field: "#work, home" in, ["work","home"]
+// out. The leading # is optional because people type it either way, and TickTick
+// stores the bare name.
+function tagList(text) {
+  var parts = squish(text).split(/[,\s]+/)
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    var tag = parts[i].replace(/^#+/, "")
+    if (tag !== "" && out.indexOf(tag) < 0) out.push(tag)
+  }
+  return out
+}
+
+function tagText(tags) {
+  var list = asList(tags)
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var tag = squish(list[i])
+    if (tag !== "") out.push("#" + tag)
+  }
+  return out.join(" ")
+}
+
+// What to put in an editable date field so committing it unchanged is a no-op.
+// The row's `dueLabel` is written for reading ("Mon 14:30", "15 Aug") and re-parsing
+// that would quietly move a date to the *next* Monday; an explicit calendar date
+// cannot drift. Both spellings round-trip through the same parser quick-add uses.
+function dateSeed(iso, allDay) {
+  var text = squish(iso)
+  var parts = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2}))?/.exec(text)
+  if (!parts) return ""
+  if (allDay || parts[2] === undefined) return parts[1]
+  return parts[1] + " " + parts[2] + ":" + parts[3]
 }
 
 function checklistProgress(done, total) {
@@ -188,8 +266,15 @@ if (typeof module !== "undefined") {
   module.exports = {
     squish: squish,
     toInt: toInt,
+    asList: asList,
     elide: elide,
     sectionTitle: sectionTitle,
+    sectionKey: sectionKey,
+    sectionLabel: sectionLabel,
+    isNote: isNote,
+    tagList: tagList,
+    tagText: tagText,
+    dateSeed: dateSeed,
     priorityLabel: priorityLabel,
     priorityColor: priorityColor,
     mix: mix,

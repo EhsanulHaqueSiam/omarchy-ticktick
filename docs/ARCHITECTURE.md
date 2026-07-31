@@ -131,7 +131,8 @@ bug falls back to pretty-printed JSON rather than turning a successful command i
 ```
 id projectId project projectColor title content bucket due dueIso dueLabel
 priority isAllDay repeat reminders items itemsDone itemsTotal
-tags start startLabel parentId sortOrder status progress pending
+tags start startLabel startIso parentId sortOrder status progress pending
+kind isNote
 ```
 
 `due` is epoch seconds (`0` when undated), `dueIso` the local ISO string. Missing optional API
@@ -144,11 +145,31 @@ as well as a due date, `parentId` for real nested subtasks, `sortOrder`, `status
 `progress`. They cost nothing to carry and the UI cannot show what it never receives. `pending`
 is local truth rather than API data: it marks a row whose change has not reached TickTick yet.
 
-`counts` is computed over **every fetched task before** view/search/priority/tag filtering, so
-the bar badge does not flicker while the user types in the search box.
+`kind` is `TEXT`, `CHECKLIST` or `NOTE`, and `isNote` is the one the UI actually branches on.
+The API omits `kind` for an ordinary task, so *absent* has to read as `TEXT` rather than as
+unknown. A note has no checkbox in TickTick and no way to be completed, which is why it is
+excluded from every count.
 
-Every read also carries `source` (`cache` or `network`), `age`, `stale` and `pending`, plus a
-`warning` when the refresh failed and the cache answered instead.
+`counts` is computed over **every task in the account, before** view/search/priority/tag
+filtering, so the bar badge neither flickers while the user types in the search box nor changes
+meaning when they browse into a single list. It carries the six buckets, `notes` (which is
+reported but never folded into anything) and `total` (to-dos only).
+
+Every read also carries `sort`, `source` (`cache` or `network`), `age`, `stale` and `pending`,
+plus a `warning` when the refresh failed and the cache answered instead. `sort` travels with the
+payload because it decides the section headings as well as the order: `list` heads each group
+with its list name — TickTick's own default for a smart list — `time` with Overdue/Today/
+Tomorrow, and `priority`/`title` have no grouping at all, because any heading would cut across
+the order that was asked for.
+
+### One request, whatever the view
+
+Every view is a single `/task/filter` read of the whole account, then a local filter. Scoping
+the *request* to one list is what used to make the bar badge change meaning the moment the user
+browsed into that list, and the per-project fan-out it would need is what trips TickTick's rate
+limiter. The one exception is a project outside the open catalogue — closed, archived, shared —
+whose tasks `/task/filter` does not return at all: that still needs `/project/{id}/data`, which
+is also the only place such a project's real name and colour survive.
 
 ## Signing in
 

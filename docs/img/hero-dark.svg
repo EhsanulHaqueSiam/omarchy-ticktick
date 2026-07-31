@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="omarchy-ticktick — TickTick tasks in the Omarchy bar">
+  <defs>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#363A4F"/>
+    </pattern>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#24273A" stop-opacity="0"/>
+      <stop offset="0.62" stop-color="#24273A" stop-opacity="0.86"/>
+      <stop offset="1" stop-color="#24273A"/>
+    </linearGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F5A97F"/>
+      <stop offset="0.45" stop-color="#8AADF4"/>
+      <stop offset="1" stop-color="#8AADF4" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="card"><rect x="704" y="40" width="432" height="240" rx="14"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="320" fill="#24273A"/>
+  <rect width="1200" height="320" fill="url(#grid)" opacity="0.5"/>
+  <rect x="440" width="760" height="320" fill="url(#fade)"/>
+
+  <!-- mark -->
+  <g transform="translate(64,58)">
+    <rect width="46" height="46" rx="12" fill="none" stroke="#F5A97F" stroke-width="2.5"/>
+    <path d="M13 24 l8 8 l14 -17" fill="none" stroke="#F5A97F" stroke-width="3.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="130" y="96" font-size="46" font-weight="700" fill="#CAD3F5" letter-spacing="-1.5">omarchy-ticktick</text>
+    <rect x="64" y="122" width="360" height="2" rx="1" fill="url(#rule)"/>
+    <text x="64" y="160" font-size="19" fill="#A5ADCB">TickTick in your Omarchy bar.</text>
+    <text x="64" y="188" font-size="19" fill="#A5ADCB">Keyboard-driven. Local-first. Zero dependencies.</text>
+
+    <g font-size="13" fill="#8AADF4">
+      <g transform="translate(64,214)">
+        <rect width="122" height="28" rx="6" fill="none" stroke="#494D64"/>
+        <text x="14" y="19">smart lists</text>
+      </g>
+      <g transform="translate(196,214)">
+        <rect width="148" height="28" rx="6" fill="none" stroke="#494D64"/>
+        <text x="14" y="19" fill="#A6DA95">offline writes</text>
+      </g>
+      <g transform="translate(354,214)">
+        <rect width="126" height="28" rx="6" fill="none" stroke="#494D64"/>
+        <text x="14" y="19" fill="#F5A97F">quick add</text>
+      </g>
+    </g>
+
+    <!-- the bar strip it lives in -->
+    <g transform="translate(64,266)">
+      <rect width="416" height="30" rx="7" fill="#1E2030" stroke="#363A4F"/>
+      <text x="16" y="20" font-size="13" fill="#6E738D">1 2 3 4</text>
+      <text x="252" y="20" font-size="13" fill="#6E738D">14:32</text>
+      <g transform="translate(322,7)">
+        <rect x="-8" y="-4" width="70" height="24" rx="6" fill="#363A4F" opacity="0.55"/>
+        <path d="M2 8 l4 4 l7 -9" fill="none" stroke="#F5A97F" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="22" y="12" font-size="13" fill="#CAD3F5">3</text>
+        <text x="38" y="12" font-size="13" fill="#6E738D">due</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- an abstract of the popup, not a fake screenshot -->
+  <g clip-path="url(#card)">
+    <rect x="704" y="40" width="432" height="240" fill="#1E2030"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+      <text x="726" y="72" font-size="15" fill="#CAD3F5">TickTick</text>
+      <text x="726" y="92" font-size="11" fill="#6E738D">1 OVERDUE · 4 TODAY</text>
+
+      <g font-size="10" fill="#A5ADCB">
+        <rect x="726" y="106" width="52" height="20" rx="5" fill="#363A4F"/>
+        <text x="738" y="120" fill="#CAD3F5">Today</text>
+        <rect x="786" y="106" width="68" height="20" rx="5" fill="none" stroke="#363A4F"/>
+        <text x="798" y="120">Tomorrow</text>
+        <rect x="862" y="106" width="52" height="20" rx="5" fill="none" stroke="#363A4F"/>
+        <text x="874" y="120">Next 7</text>
+        <rect x="922" y="106" width="46" height="20" rx="5" fill="none" stroke="#363A4F"/>
+        <text x="934" y="120">Inbox</text>
+        <rect x="976" y="106" width="40" height="20" rx="5" fill="none" stroke="#363A4F"/>
+        <text x="988" y="120">Lists</text>
+      </g>
+
+      <!-- section: INBOX -->
+      <text x="726" y="152" font-size="9" fill="#6E738D" letter-spacing="1.2">INBOX</text>
+      <g transform="translate(726,160)">
+        <rect x="0" y="0" width="11" height="11" rx="3" fill="none" stroke="#6E738D"/>
+        <rect x="20" y="3" width="132" height="6" rx="3" fill="#494D64"/>
+        <text x="330" y="10" font-size="10" fill="#ED8796">28 Jul</text>
+      </g>
+      <g transform="translate(726,180)">
+        <rect x="0" y="0" width="11" height="11" rx="3" fill="none" stroke="#6E738D"/>
+        <rect x="20" y="3" width="104" height="6" rx="3" fill="#494D64"/>
+        <text x="332" y="10" font-size="10" fill="#6E738D">14:00</text>
+      </g>
+
+      <!-- section: UNIVERSITY WORK -->
+      <text x="726" y="212" font-size="9" fill="#6E738D" letter-spacing="1.2">UNIVERSITY WORK</text>
+      <g transform="translate(726,220)">
+        <rect x="0" y="1" width="11" height="9" rx="2" fill="none" stroke="#6E738D"/>
+        <path d="M2.5 5.5 h6" stroke="#6E738D" stroke-width="1.2"/>
+        <rect x="20" y="3" width="88" height="6" rx="3" fill="#494D64"/>
+        <text x="332" y="10" font-size="10" fill="#6E738D">11:00</text>
+      </g>
+      <g transform="translate(726,240)">
+        <rect x="0" y="0" width="11" height="11" rx="3" fill="none" stroke="#F5A97F"/>
+        <rect x="20" y="3" width="146" height="6" rx="3" fill="#6E738D"/>
+        <circle cx="316" cy="6" r="3" fill="#F5A97F"/>
+        <text x="330" y="10" font-size="10" fill="#6E738D">18:00</text>
+      </g>
+    </g>
+  </g>
+  <rect x="704" y="40" width="432" height="240" rx="14" fill="none" stroke="#494D64" stroke-width="1.5"/>
+</svg>

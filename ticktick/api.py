@@ -53,6 +53,36 @@ def _seg(value: Any) -> str:
     return urllib.parse.quote(str(value), safe="")
 
 
+class _NoCrossHostRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse any redirect that leaves the host or drops out of HTTPS.
+
+    Every request carries ``Authorization: Bearer <token>`` in its headers, and
+    `urllib` replays the original headers on a redirect. A 302 to another origin —
+    from a hijacked DNS answer, a captive portal, or simply an API that starts
+    redirecting one day — would therefore hand the user's full account credential to
+    whatever host was named, in cleartext if the scheme downgraded to http.
+
+    Same-origin redirects are still followed; those cannot disclose anything the
+    request was not already sending.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        old = urllib.parse.urlsplit(req.full_url)
+        new = urllib.parse.urlsplit(newurl)
+        if (new.scheme, new.hostname, new.port) != (old.scheme, old.hostname, old.port):
+            raise urllib.error.HTTPError(
+                req.full_url, code,
+                f"refusing to follow a redirect to {new.scheme}://{new.netloc} — "
+                "that would send your TickTick token to another host",
+                headers, fp,
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+#: Built once: an opener is stateless here and thread-safe for our use.
+_OPENER = urllib.request.build_opener(_NoCrossHostRedirect())
+
+
 def _http_error(exc: urllib.error.HTTPError, method: str, url: str) -> Exception:
     """Map an HTTPError onto our hierarchy, folding in the response body."""
     status = exc.code
@@ -166,7 +196,7 @@ class Client:
     ) -> Any:
         req = urllib.request.Request(url, data=payload, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with _OPENER.open(req, timeout=self.timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
             raise _http_error(exc, method, url) from None
@@ -416,7 +446,14 @@ class Client:
             return self.filter_tasks(status=[0])
         except AuthError:
             raise  # a bad token will not be fixed by asking a different way
-        except (ApiError, NetworkError):
+        except ApiError as exc:
+            if getattr(exc, "throttled", False):
+                # Being throttled is the one failure the fallback must not answer.
+                # It replaces a single request with one per project, which is what
+                # trips the limiter in the first place — retrying that way turns a
+                # brief slowdown into a much longer one.
+                raise
+        except NetworkError:
             pass
 
         tasks: list[dict] = []

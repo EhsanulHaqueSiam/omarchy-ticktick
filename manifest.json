@@ -6,7 +6,7 @@
   "author": "Ehsanul Haque Siam",
   "license": "MIT",
   "homepage": "https://github.com/EhsanulHaqueSiam/omarchy-ticktick",
-  "description": "TickTick tasks in the Omarchy bar — due counts, grouped views, natural-language quick add, complete, edit, and checklist toggles.",
+  "description": "TickTick tasks in the Omarchy bar — smart lists, lists and folders, due counts that ignore notes, natural-language quick add, and full task editing without leaving the keyboard.",
   "kinds": [
     "bar-widget"
   ],
@@ -15,16 +15,18 @@
   },
   "barWidget": {
     "displayName": "TickTick",
-    "description": "Overdue and due-today task count, with a keyboard-driven popup to browse, complete, edit, and quick-add tasks.",
+    "description": "Overdue and due-today task count — notes excluded — with a keyboard-driven popup to browse smart lists, complete, edit, and quick-add tasks.",
     "category": "Productivity",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 300,
       "upcomingDays": 7,
+      "completedDays": 7,
       "badgeMode": "Today",
       "hideWhenEmpty": false,
       "defaultView": "Today",
+      "sortBy": "List",
       "defaultProject": "",
       "showProjectChips": true,
       "includeUndated": false,
@@ -52,6 +54,29 @@
         "defaultValue": 7
       },
       {
+        "key": "completedDays",
+        "type": "integer",
+        "label": "Completed window (days)",
+        "description": "How far back the Done view looks for finished tasks.",
+        "min": 1,
+        "max": 90,
+        "step": 1,
+        "defaultValue": 7
+      },
+      {
+        "key": "sortBy",
+        "type": "enum",
+        "label": "Sort tasks by",
+        "description": "Also decides the section headings: List heads each group with its list name, Date with Overdue/Today/Tomorrow.",
+        "options": [
+          "List",
+          "Date",
+          "Priority",
+          "Title"
+        ],
+        "defaultValue": "List"
+      },
+      {
         "key": "badgeMode",
         "type": "enum",
         "label": "Bar badge counts",
@@ -71,9 +96,12 @@
         "description": "Which view the popup opens on.",
         "options": [
           "Today",
+          "Tomorrow",
           "Next",
+          "Inbox",
           "All",
-          "Projects"
+          "Lists",
+          "Completed"
         ],
         "defaultValue": "Today"
       },

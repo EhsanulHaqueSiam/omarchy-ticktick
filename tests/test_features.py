@@ -177,6 +177,28 @@ class AdoptionTest(Base):
         self.login()
         self.assertNotIn("adopt_external", config.load())
 
+    def test_signing_in_over_a_borrowed_token_actually_stores_the_new_one(self):
+        # The marker that stops a borrowed token being written down must not also
+        # discard one the user deliberately signed in with — that made `login` and
+        # `auth` report success and change nothing at all.
+        own = "own-token-9876543210abcdef"
+        config.save({**config.load(), "access_token": own, "auth_method": "token"})
+        stored = json.loads(config.CONFIG_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(stored.get("access_token"), own,
+                         "the credential file kept the borrowed token instead of the new one")
+        self.assertEqual(stored.get("auth_method"), "token")
+
+    def test_an_incidental_save_still_does_not_write_down_the_borrowed_token(self):
+        # The other half of the same rule: saving something unrelated — the Inbox id —
+        # must leave the borrowing a live mirror rather than making a permanent copy.
+        cfg = config.load()
+        self.assertEqual(cfg["access_token"], TOKEN)
+        cfg["inbox_id"] = "inbox777"
+        config.save(cfg)
+        stored = json.loads(config.CONFIG_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(stored.get("inbox_id"), "inbox777")
+        self.assertNotIn("access_token", stored)
+
 
 # -------------------------------------------------------------- render
 

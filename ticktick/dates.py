@@ -10,6 +10,8 @@ the single indirection so tests can pin the clock.
 
 from __future__ import annotations
 
+import os
+import pathlib
 from datetime import date as _date, datetime, time as _time, tzinfo as _tzinfo
 from zoneinfo import ZoneInfo
 
@@ -34,8 +36,39 @@ _MONTH_NAMES = (
 
 
 def now() -> datetime:
-    """Local, timezone-aware wall-clock now."""
-    return datetime.now().astimezone()
+    """Local, timezone-aware wall-clock now, carrying a zone rather than an offset.
+
+    `datetime.now().astimezone()` alone attaches a *fixed* offset — today's, frozen.
+    It is right for this instant and wrong for every instant on the far side of a DST
+    change, and `bucket`/`label` convert due dates through `now.tzinfo`. With a frozen
+    offset every timed task past the next transition renders an hour out, and anything
+    within an hour of local midnight lands in the wrong day group. A real zone knows
+    its own transitions, so the conversion resolves each instant on its own terms.
+    """
+    return datetime.now(_local_zone())
+
+
+def local_zone_name() -> str:
+    """The IANA zone name for this machine, or '' when it cannot be determined.
+
+    Python exposes no portable way to ask; `TZ` — which is also how the tests pin the
+    clock — and the `/etc/localtime` symlink cover every configuration Omarchy ships
+    with. TickTick uses `timeZone` only to decide what an all-day date means, so ''
+    (the field omitted) is a safe answer there, not a broken one.
+    """
+    name = os.environ.get("TZ", "").strip().lstrip(":")
+    if not name:
+        try:
+            parts = pathlib.Path("/etc/localtime").resolve().parts
+            if "zoneinfo" in parts:
+                name = "/".join(parts[parts.index("zoneinfo") + 1:])
+        except OSError:
+            return ""
+    try:
+        ZoneInfo(name)
+    except Exception:  # a POSIX spec like EST5EDT, or a name with no database entry
+        return ""
+    return name
 
 
 def parse(
@@ -151,6 +184,20 @@ def _instant(raw: str | None) -> datetime | None:
     # A naive stamp is read as local wall time; astimezone() attaches the offset
     # that was actually in force on that date, so DST is not smeared.
     return dt if dt.tzinfo is not None else dt.astimezone()
+
+
+def _local_zone() -> _tzinfo:
+    """The machine's zone as something that knows its own DST transitions.
+
+    Falling back to the frozen offset is not fatal — it is still right for today, and
+    a wrong hour in a task list beats an exception on the way to drawing it.
+    """
+    zone = _zone(local_zone_name())
+    if zone is not None:
+        return zone
+    tz = datetime.now().astimezone().tzinfo
+    assert tz is not None  # astimezone() always attaches one
+    return tz
 
 
 def _zone(tz_name: str | None) -> _tzinfo | None:

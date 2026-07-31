@@ -58,7 +58,9 @@ f.add_task(title="Renew domain", projectId="p-work", isAllDay=True,
            repeatFlag="RRULE:FREQ=YEARLY;INTERVAL=1")           # overdue
 f.add_task(title="Submit report", projectId="p-work", priority=3,
            dueDate=stamp(0, 23), content="Include Q3 numbers.",
-           reminders=["TRIGGER:-PT30M"])                        # today
+           reminders=["TRIGGER:-PT30M"],                        # today
+           items=[{"id": "s1", "title": "gather figures", "status": 1},
+                  {"id": "s2", "title": "write summary", "status": 0}])
 f.add_task(title="Call the bank", projectId="p-home",
            dueDate=stamp(0, 23))                                # today
 f.add_task(title="Pack for trip", projectId="p-home", isAllDay=True, tags=["errand"],
@@ -66,6 +68,9 @@ f.add_task(title="Pack for trip", projectId="p-home", isAllDay=True, tags=["erra
            items=[{"id": "i1", "title": "passport", "status": 1},
                   {"id": "i2", "title": "charger", "status": 0}])
 f.add_task(title="Someday idea", projectId=f.inbox_id)          # undated
+# Due today, but a note: it renders and it must not reach the badge.
+f.add_task(title="Meeting notes", projectId="p-work", kind="NOTE",
+           content="What was said.", dueDate=stamp(0, 20))
 (work / "base.txt").write_text(s.base)
 (work / "config/ticktick/credentials.json").write_text(
     json.dumps({"access_token": TOKEN, "inbox_id": f.inbox_id}))
@@ -123,7 +128,8 @@ ShellRoot {
     // Strings on purpose: `omarchy bar plugin set` writes them that way unless the
     // caller remembers `--json`, and reading them as booleans is a real past bug.
     settings: ({ refreshIntervalSec: 86400, badgeMode: "Today", hideWhenEmpty: "false",
-                 showProjectChips: "true", confirmDelete: "true", includeUndated: "true" })
+                 showProjectChips: "true", confirmDelete: "true", includeUndated: "true",
+                 sortBy: "List" })
   }
 
   Timer {
@@ -136,14 +142,34 @@ ShellRoot {
                   + " showProjectChips=" + subject.showProjectChips
                   + " confirmDelete=" + subject.confirmDelete)
       console.log("SMOKE rows=" + subject.rowCount)
+      console.log("SMOKE sections=" + subject.sectionFor(0) + "|" + subject.sectionFor(1)
+                  + "|" + subject.sectionFor(2))
       subject.open()
       Qt.callLater(function () {
-        subject.setView("next"); subject.setView("all"); subject.setView("project")
+        // Every tab, in the order the number keys walk them.
+        for (var i = 0; i < subject.views.length; i++) subject.setView(subject.views[i])
         subject.cycleView(1); subject.cycleView(-1)
         subject.moveCursor(1); subject.moveCursor(-1)
         subject.openSearch(); subject.closeSearch(true)
         subject.openAdd(); subject.closeAdd()
+        subject.toggleFilters(); subject.toggleFilters()
+        // The four sort modes, back round to where it started.
+        for (var s = 0; s < 4; s++) subject.service.cycleSort()
+        subject.service.cyclePriorityFilter(); subject.service.setPriorityFilter(-1)
+        subject.service.sync()
         subject.setView("today")
+        // Expanding a task that has a checklist must actually grow the panel. Rows
+        // reach a delegate as a QVariant, and a nested array arrives array-LIKE but
+        // fails Array.isArray — which silently blanked every checklist and reminder.
+        var withItems = null
+        for (var w = 0; w < subject.rows.length; w++) {
+          if (subject.rows[w].itemsTotal > 0) withItems = subject.rows[w]
+        }
+        detailProbe.shut = subject.panel.contentHeight
+        detailProbe.subjectRow = withItems
+        if (withItems) subject.toggleExpanded(withItems.id)
+        detailProbe.running = true   // the pane is built on the next tick, not this one
+
         if (subject.rowCount > 0) {
           subject.setCursor(0)
           subject.toggleExpanded(subject.rows[0].id)
@@ -152,12 +178,47 @@ ShellRoot {
           console.log("SMOKE confirmOpen=" + subject.confirmOpen)
           subject.cancelDelete()
         }
+        // A new task must be on screen on the keystroke, not two process launches
+        // and a round trip later.
+        var before = subject.rowCount
+        subject.service.add("smoke draft task")
+        console.log("SMOKE add before=" + before + " after=" + subject.rowCount)
+        // …and it must join the group it belongs to. Appended to the end it would
+        // open a second heading for a list already on screen further up.
+        var seen = {}, dupes = 0
+        for (var r = 0; r < subject.rowCount; r++) {
+          var head = subject.sectionFor(r)
+          if (head === "") continue
+          if (seen[head]) dupes += 1
+          seen[head] = true
+        }
+        console.log("SMOKE dupsections=" + dupes)
+        // A note has no checkbox: completing one must be refused, not queued.
+        var note = null
+        for (var n = 0; n < subject.rows.length; n++) {
+          if (subject.rows[n].isNote) note = subject.rows[n]
+        }
+        console.log("SMOKE note=" + (note ? note.title : "none"))
+        if (note) subject.completeAt(note)
         subject.dismiss()
-        console.log("SMOKE done rows=" + subject.rowCount)
+        console.log("SMOKE done rows=" + subject.rowCount + " sort=" + subject.service.sort)
         quitTimer.running = true
       })
     }
   }
+  Timer {
+    id: detailProbe
+    property real shut: 0
+    property var subjectRow: null
+    interval: 500
+    onTriggered: {
+      console.log("SMOKE detail shut=" + Math.round(shut)
+                  + " open=" + Math.round(subject.panel.contentHeight)
+                  + " items=" + (subjectRow ? subjectRow.itemsTotal : 0))
+      if (subjectRow) subject.toggleExpanded(subjectRow.id)
+    }
+  }
+
   Timer { id: quitTimer; interval: 2500; onTriggered: Qt.quit() }
 }
 QML
@@ -183,10 +244,25 @@ if [ -n "$problems" ]; then
   fail "QML produced errors or warnings"
 fi
 
-# Today = overdue + today: "Renew domain", "Submit report", "Call the bank".
-# Tomorrow's and the undated one are correctly excluded.
-grep -q "SMOKE rows=3" "$WORK/clean.log" \
-  || { cat "$WORK/clean.log"; fail "expected 3 rows (1 overdue + 2 today) in the Today view"; }
+# Today = overdue + today: "Renew domain", "Submit report", "Call the bank", plus the
+# note that is also due today. Tomorrow's and the undated one are correctly excluded.
+grep -q "SMOKE rows=4" "$WORK/clean.log" \
+  || { cat "$WORK/clean.log"; fail "expected 4 rows (1 overdue + 2 today + 1 note) in Today"; }
+# …but the badge counts only the three real tasks. A note has no checkbox, so
+# counting one reports work that does not exist.
+grep -q "SMOKE .*badge=3" "$WORK/clean.log" \
+  || { cat "$WORK/clean.log"; fail "the badge counted the note"; }
+grep -q "SMOKE note=Meeting notes" "$WORK/clean.log" \
+  || fail "the note never reached the list"
+grep -q "SMOKE add before=4 after=5" "$WORK/clean.log" \
+  || { cat "$WORK/clean.log"; fail "a new task did not appear synchronously"; }
+grep -q "SMOKE dupsections=0" "$WORK/clean.log" \
+  || { cat "$WORK/clean.log"; fail "a list was headed twice — the draft opened its own section"; }
+# Sorting by list means the headings are list names, not Overdue/Today.
+grep -qE "SMOKE sections=(WORK|HOME|INBOX)" "$WORK/clean.log" \
+  || { cat "$WORK/clean.log"; fail "sections are not headed by list name under sort=list"; }
+grep -q "SMOKE done .* sort=list" "$WORK/clean.log" \
+  || fail "cycling the sort four times did not return to where it started"
 grep -q "SMOKE confirmOpen=true" "$WORK/clean.log" \
   || fail "the delete confirmation never opened"
 grep -q "SMOKE settings hideWhenEmpty=false showProjectChips=true confirmDelete=true" \

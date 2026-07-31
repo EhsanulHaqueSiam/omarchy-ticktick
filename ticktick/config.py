@@ -65,6 +65,17 @@ def load() -> dict:
             cfg["access_token"] = token
             cfg["auth_method"] = "adopted"
             cfg["auth_source"] = source
+            # Borrowed, not taken. `save` strips these again, so the token is never
+            # copied into this tool's own file: it stays a live mirror of the other
+            # one, and revoking there revokes here. Without this marker the next
+            # incidental `save` — updating the Inbox id, say — would quietly make a
+            # permanent copy that outlives the other tool's logout.
+            #
+            # The borrowed *value*, not a boolean: `save` has to tell "still the token
+            # we borrowed" from "the user has since signed in properly". A flag cannot,
+            # and stripped every freshly stored token, so `login` and `auth` reported
+            # success and changed nothing.
+            cfg["_adopted"] = token
     return cfg
 
 
@@ -88,13 +99,22 @@ def save(cfg: dict) -> None:
     The temp file lives in the destination directory so ``os.replace`` is a same-filesystem
     rename: readers see either the old file or the new one, never a truncated token.
     """
+    body = {k: v for k, v in cfg.items() if not k.startswith("_")}
+    if cfg.get("_adopted") and cfg.get("access_token") == cfg["_adopted"]:
+        # See `load`: a borrowed credential is never written down here. The equality
+        # test is what makes signing in still work — an explicit `login` or `auth`
+        # replaces `access_token` with something that is no longer the borrowed value,
+        # and that one must be persisted.
+        for key in ("access_token", "auth_method", "auth_source"):
+            body.pop(key, None)
+
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(
         dir=str(CONFIG_PATH.parent), prefix=".credentials-", suffix=".tmp"
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(cfg, fh, indent=2, sort_keys=True)
+            json.dump(body, fh, indent=2, sort_keys=True)
             fh.flush()
             os.fsync(fh.fileno())  # rename is only atomic w.r.t. data that reached the disk
         os.chmod(tmp, 0o600)  # before the rename: the token is never world-readable, ever

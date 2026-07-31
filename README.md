@@ -1,34 +1,56 @@
-# omarchy-ticktick
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/hero-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/hero-light.svg">
+    <img alt="omarchy-ticktick — TickTick in your Omarchy bar" src="docs/img/hero-dark.svg" width="900">
+  </picture>
+</p>
 
-[![CI](https://github.com/EhsanulHaqueSiam/omarchy-ticktick/actions/workflows/ci.yml/badge.svg)](https://github.com/EhsanulHaqueSiam/omarchy-ticktick/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Omarchy](https://img.shields.io/badge/Omarchy-shell%20plugin-8aadf4)](https://omarchy.org/)
-[![Python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
+<p align="center">
+  <a href="https://github.com/EhsanulHaqueSiam/omarchy-ticktick/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/EhsanulHaqueSiam/omarchy-ticktick/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8aadf4?style=flat-square"></a>
+  <a href="https://omarchy.org/"><img alt="Omarchy plugin" src="https://img.shields.io/badge/omarchy-shell%20plugin-f5a97f?style=flat-square"></a>
+  <a href="https://www.python.org/"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-a6da95?style=flat-square"></a>
+  <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-c6a0f6?style=flat-square">
+</p>
 
-**TickTick in your Omarchy bar.** Due counts at a glance, a keyboard-driven popup to
-browse, tick and edit tasks, and natural-language quick add — without leaving the bar.
+<p align="center">
+  <b>Your tasks in the bar.</b> Grouped by list, the way TickTick does it.<br>
+  Every edit lands <b>instantly and locally</b>, then syncs in the background — so a
+  train tunnel is not an outage.
+</p>
 
-Edits land **instantly and locally**, then sync. Close the lid mid-flight, tick things
-off on a train with no signal, and it all arrives when you reconnect.
+<p align="center">
+  <img src="docs/img/bar.png" alt="The widget in the bar, showing five tasks due" width="421"><br>
+  <sub>Overdue and due today, urgent-coloured when you are behind. Notes are not counted.</sub>
+</p>
 
-```
- ☑ 3                       ← overdue + due today, urgent-coloured when you're behind
- ┌─────────────────────────────────────┐
- │  ☑  TickTick                        │
- │     1 overdue · 2 today             │
- │  [Today] Next  All  Projects        │
- │  ⌕ search…                          │
- │  + tomorrow 5pm !high #work         │
- │                                     │
- │  OVERDUE                            │
- │  ☐ Renew domain      Personal  ●  Tue│
- │  TODAY                              │
- │  ☐ Submit report     Work      ●  17:00│
- │  ☐ Pack for trip     Home  1/3 ○  today│
- └─────────────────────────────────────┘
-```
+---
+
+<table>
+<tr>
+<td width="34%" valign="top" align="center">
+  <img src="docs/img/popup.png" alt="The popup, grouped by list" width="100%"><br>
+  <sub><b>Sections are your lists.</b><br>Inbox · University work · Study · Personal</sub>
+</td>
+<td width="34%" valign="top" align="center">
+  <img src="docs/img/detail.png" alt="A task's detail pane" width="100%"><br>
+  <sub><b>Edit anything, from the keyboard.</b><br>Dates, tags, repeat, reminder, subtasks</sub>
+</td>
+<td width="32%" valign="top" align="center">
+  <img src="docs/img/lists.png" alt="Lists, nested under their folders" width="100%"><br>
+  <sub><b>Lists nest under folders.</b><br>Just like the TickTick sidebar</sub>
+</td>
+</tr>
+</table>
+
+Sections follow the sort: **by list** is the default, the way TickTick groups a smart
+list. <kbd>o</kbd> cycles to date (Overdue / Today / Tomorrow), priority or title.
+Notes render with a **▤** and never reach the badge — only to-dos are counted.
 
 ## Install
+
+**1 — add the plugin.**
 
 ```bash
 omarchy plugin add https://github.com/EhsanulHaqueSiam/omarchy-ticktick.git --enable
@@ -38,7 +60,19 @@ That is a `git clone` into `~/.config/omarchy/plugins/siam.ticktick/` and nothin
 no build step, no `pip install`, no daemon, no Node. The helper is standard-library
 Python 3.11+, which Omarchy already has.
 
-Then sign in: click the widget, paste a token. That is the whole setup.
+**2 — install the `ticktick` CLI.** The widget is a thin shell over it: everything the
+popup does, it does by running this. It ships inside the plugin, and the widget always
+calls it by its full path — but you want it on your `PATH` too, because it is how you
+sign in from a terminal, script your tasks, and diagnose anything that goes wrong. Every
+command in this README assumes it is there.
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf ~/.config/omarchy/plugins/siam.ticktick/bin/ticktick ~/.local/bin/ticktick
+ticktick --version
+```
+
+**3 — sign in.** Click the widget → **Sign in with browser**. That is the whole setup.
 
 <details>
 <summary>Placing and updating the widget</summary>
@@ -52,41 +86,44 @@ omarchy plugin remove siam.ticktick
 
 ## Signing in
 
-Open TickTick on the web, click your avatar → **Settings → Account → API Token**,
-create one, and paste it into the widget.
+**Sign in with browser** is the button the widget leads with. It opens a terminal,
+sends you to TickTick in your browser, and catches the redirect back. The first run asks
+once for a **Client ID** — TickTick issues no shared one, so every client needs an app of
+its own:
 
-That is it. No app registration, no client secret, no redirect URI to match
-character-for-character, no free port on localhost.
+1. open the [TickTick Developer Center](https://developer.ticktick.com/manage) → **New App**
+2. set its redirect URI to exactly `http://localhost:8080/callback`
+3. paste the Client ID when the terminal asks
 
-The token is passed to the helper over **stdin**, never on the command line, because
-anything in `argv` is readable by every process on the machine through
-`/proc/<pid>/cmdline`. It is stored at `~/.config/ticktick/credentials.json`, mode
-`0600`. Nothing is sent anywhere except `api.ticktick.com`.
+No client secret is needed: the flow uses **PKCE**, because a secret shipped inside a
+program on someone else's machine is not a secret. The id is remembered, so this is asked
+once ever.
 
-From a terminal, if you prefer:
+```bash
+ticktick auth                                  # same flow, from a terminal
+ticktick auth --redirect http://localhost:9000/callback
+```
+
+### Or paste an API token
+
+Faster if you already have one, and the fallback if the browser flow cannot run — behind
+**Paste an API token instead** in the widget. Get it from the TickTick web app: avatar →
+**Settings → Account → API Token**.
 
 ```bash
 ticktick login          # prompts, reads the token from stdin
 ticktick status
 ```
 
+The token is passed to the helper over **stdin**, never on the command line, because
+anything in `argv` is readable by every process on the machine through
+`/proc/<pid>/cmdline`. It is stored at `~/.config/ticktick/credentials.json`, mode
+`0600`. Nothing is sent anywhere except `api.ticktick.com`.
+
 **Already signed in to [TickTick's own CLI](https://www.npmjs.com/package/@ticktick/ticktick-cli)?**
 Then you are already signed in here — its token is picked up automatically from
 `~/.config/ticktick-cli/config.json`. That file is only ever read, never written, and
 `ticktick logout` stops the borrowing for good.
-
-<details>
-<summary>Browser OAuth instead (the old way)</summary>
-
-Still supported for anyone who would rather not handle a token directly. It needs an
-app registered at the [TickTick Developer Center](https://developer.ticktick.com/manage)
-with the redirect URL set to exactly `http://localhost:8080/callback`.
-
-```bash
-ticktick auth --client-id ID --client-secret SECRET
-ticktick auth --redirect http://localhost:9000/callback   # a different port
-```
-</details>
 
 <details>
 <summary>Using dida365.com (滴答清单)?</summary>
@@ -109,7 +146,8 @@ ticktick login --api-base https://api.dida365.com/open/v1
 |---|---|
 | Bar button | left = popup · right = refresh now · middle = jump to quick-add |
 | Task row | click the checkbox = complete · click the title = expand detail |
-| Expanded detail | click a checklist item to tick it · pick a project to move it |
+| Expanded detail | tick a subtask · remove one with the ✕ that appears · pick a list, repeat or reminder |
+| Note row | opens like any other; it has no checkbox, because a note is not a task |
 
 ### Keyboard
 
@@ -121,13 +159,32 @@ The popup is fully keyboard-driven — the mouse is optional.
 | <kbd>Enter</kbd> | complete the task under the cursor |
 | <kbd>Space</kbd> | expand / collapse its detail |
 | <kbd>←</kbd> <kbd>→</kbd> / <kbd>Tab</kbd> | switch view |
-| <kbd>1</kbd>–<kbd>4</kbd> | jump to Today / Next / All / Projects |
+| <kbd>1</kbd>–<kbd>7</kbd> | jump to Today / Tomorrow / Next 7 / Inbox / All / Lists / Done |
 | <kbd>a</kbd> | quick-add |
 | <kbd>/</kbd> | search |
+| <kbd>o</kbd> | cycle sort — list, date, priority, title (this also sets the headings) |
+| <kbd>f</kbd> | filter by priority and tag; <kbd>Esc</kbd> clears it |
 | <kbd>p</kbd> | cycle priority |
 | <kbd>x</kbd> / <kbd>d</kbd> | delete (with confirmation) |
-| <kbd>r</kbd> | refresh |
+| <kbd>r</kbd> | refresh from the cache |
+| <kbd>s</kbd> | sync — push anything queued and refetch now |
 | <kbd>Esc</kbd> | back out one layer, then close |
+
+<kbd>r</kbd> and <kbd>s</kbd> differ on purpose: reads are cache-first, so <kbd>r</kbd>
+is instant and may serve what it already has. <kbd>s</kbd> is how you say *go and look*.
+
+### Notes vs tasks
+
+TickTick lets a list hold notes as well as tasks. A note has no checkbox and nothing to
+finish, so it shows with a **▤** glyph, cannot be completed, and never counts toward the
+bar badge, the section counts or a list's count. Only to-dos are counted.
+
+### Editing a task
+
+<kbd>Space</kbd> opens a task's detail, where everything about it is editable without
+leaving the keyboard: due date and start date (in the same natural language quick-add
+takes — `tomorrow 5pm`), tags, repeat, reminder, which list it belongs to, and its
+subtasks. An empty due field committed with <kbd>Enter</kbd> clears the date.
 
 ### Natural-language quick add
 
@@ -155,11 +212,32 @@ Preview the parse without creating anything:
 ticktick parse "submit report tomorrow 5pm !high #work"
 ```
 
-## Works offline
+## The sync engine
 
-Every read is answered from a local cache, and every write is applied locally first,
-queued, and sent when it can be. Tick a task off with no network and it leaves the
-list immediately; the queue survives reboots and drains on its own.
+Nothing you do here waits on the network. Every read is answered from a local cache and
+every write is applied locally first, queued on disk, and sent when it can be:
+
+```
+ keystroke ──▶ local cache updated ──▶ on screen        (same frame)
+                      │
+                      └──▶ durable outbox ──▶ TickTick  (in the background)
+                                                 │
+                                    other devices see it
+```
+
+Add a task and the row is there **on the keystroke** — before the helper has even been
+launched — because it is written to the cache first and the queue catches up. Tick
+something off in a tunnel and it leaves the list immediately; the queue survives reboots
+and drains on its own. Two rules make that safe:
+
+- **A write the server has accepted is never sent twice**, and a write it has not is
+  never dropped — not after a long outage, not behind a captive portal.
+- **A queued edit never reverts a field it did not touch.** TickTick has no PATCH, so an
+  edit that has been waiting re-reads the task before replacing it.
+
+A task typed inside **Today** gets today's date, and one typed inside a list joins that
+list — TickTick's own rule, and the reason a new task appears where you typed it instead
+of in an undated list nobody is looking at.
 
 ```bash
 ticktick complete <taskId> --offline   # apply now, send later
@@ -186,23 +264,25 @@ you can do from a terminal, which is also what makes the whole thing debuggable.
 It prints a formatted view to a terminal and **exactly one JSON object** to a pipe, so
 the same command serves a human and the widget without a flag to remember.
 
-It lives inside the plugin. Put it on your `PATH` once:
-
-```bash
-mkdir -p ~/.local/bin
-ln -sf ~/.config/omarchy/plugins/siam.ticktick/bin/ticktick ~/.local/bin/ticktick
-```
+Put it on your `PATH` if you have not already — [step 2 of Install](#install).
 
 ```bash
 ticktick status                              # signed in? counts, pending writes
+ticktick tasks --view today                  # due today + whatever is late
+ticktick tasks --view tomorrow
+ticktick tasks --view inbox                  # a list, so undated tasks show too
 ticktick tasks --view next --days 14
+ticktick tasks --sort time                   # list (default) | time | priority | title
 ticktick tasks --tag errand --priority high
+ticktick sync                                # push what is queued, then refetch
 ticktick search invoice --all-states         # searches completed tasks too
 ticktick add "submit report tomorrow 5pm !high #work"
 ticktick add "call plumber" --tag urgent --start today
 ticktick complete <taskId>
 ticktick edit <taskId> --priority 3 --due "next monday 9am"
 ticktick edit <taskId> --add-tag errand --remove-tag urgent
+ticktick edit <taskId> --remind 30m --repeat "every 2 weeks"
+ticktick edit <taskId> --clear-remind --clear-repeat
 ticktick move <taskId> <toProjectId>
 
 ticktick item add <taskId> "pack passport"   # checklists
@@ -248,9 +328,11 @@ omarchy bar plugin set siam.ticktick hideWhenEmpty true --json
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `refreshIntervalSec` | 30–86400 | `300` | poll cadence; actions refresh immediately regardless |
-| `upcomingDays` | 0–30 | `7` | how far the **Next** view reaches |
-| `badgeMode` | Today / Overdue / All / None | `Today` | what the bar number counts |
-| `defaultView` | Today / Next / All / Projects | `Today` | which view the popup opens on |
+| `upcomingDays` | 0–30 | `7` | how far the **Next 7** view reaches |
+| `completedDays` | 1–90 | `7` | how far back **Done** looks |
+| `badgeMode` | Today / Overdue / All / None | `Today` | what the bar number counts (never notes) |
+| `sortBy` | List / Date / Priority / Title | `List` | row order, and therefore the section headings |
+| `defaultView` | Today / Tomorrow / Next / Inbox / All / Lists / Completed | `Today` | which view the popup opens on |
 | `defaultProject` | project id | `""` | where quick-add files tasks (blank = Inbox) |
 | `hideWhenEmpty` | bool | `false` | remove the widget from the bar when the badge is 0 |
 | `showProjectChips` | bool | `true` | show each task's project on its row |
@@ -343,8 +425,14 @@ ticktick sync
 If it reports a rate limit, that is TickTick throttling you; the backoff is remembered
 across runs and it will drain on its own.
 
-**"Not signed in" after it worked.** Generate a fresh token in TickTick under
-Settings → Account → API Token and paste it in again.
+**"Not signed in" after it worked.** The credential lapsed. Run `ticktick auth` again,
+or generate a fresh token under Settings → Account → API Token and paste it in. Nothing
+queued is lost by signing back in — the outbox is on disk and flushes on the next
+successful call.
+
+**A new task takes a moment to show its real due date.** The row appears instantly from
+the local cache with what you typed; the parsed date, list and priority land a moment
+later when the write is confirmed. If it never resolves, `ticktick sync` will say why.
 
 **Two TickTick widgets, one stops responding to `omarchy-shell`.** An IPC target
 accepts one handler; the first to register wins. Remove the other plugin, or use the
@@ -356,10 +444,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Standard library only, and logic that ca
 tested belongs in Python rather than QML.
 
 ```bash
-python -m unittest discover -s tests   # 165 tests, no network
+python -m unittest discover -s tests   # 215 tests, no network
+node --test tests/model.test.js        # the QML presentation helpers
 python tests/validate_manifest.py
 python tests/validate_qml_api.py
 ./tests/qml_smoke.sh                   # needs a live Omarchy session
+./tests/screenshots.sh                 # re-renders the images above
 ```
 
 ## License

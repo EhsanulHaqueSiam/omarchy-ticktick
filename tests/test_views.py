@@ -68,26 +68,36 @@ def fixture() -> FakeClient:
 
 
 class FetchTest(unittest.TestCase):
-    def test_whole_account_views_make_one_task_request(self):
+    def test_every_view_makes_one_task_request(self):
         client = fixture()
-        for view in ("today", "overdue", "next", "all"):
+        for view in ("today", "tomorrow", "overdue", "next", "all", "inbox"):
             client.calls.clear()
             views.collect(client, {}, view=view)
             self.assertEqual(client.calls, ["projects", "all_undone"], view)
 
-    def test_project_view_fetches_only_that_project(self):
+    def test_a_project_view_scopes_the_one_account_wide_read(self):
+        # Not a per-project fetch: scoping the *request* is what made the bar badge
+        # change meaning the moment the user browsed into a list.
         client = fixture()
         result = views.collect(client, {}, view="project", project="p1")
-        self.assertEqual(client.calls, ["projects", "project_data:p1"])
+        self.assertEqual(client.calls, ["projects", "all_undone"])
         self.assertEqual([t["id"] for t in result["tasks"]], ["t1", "t2"])
+        self.assertEqual(result["counts"]["total"], 5, "counts stay whole-account")
 
-    def test_project_view_of_the_inbox_uses_the_inbox_path(self):
-        # /project/<inbox id>/data is not a thing; only the literal "inbox" path is.
+    def test_the_inbox_needs_no_special_endpoint_once_its_id_is_known(self):
+        for view, project in (("project", INBOX), ("inbox", None)):
+            client = fixture()
+            result = views.collect(client, {}, view=view, project=project)
+            self.assertEqual(client.calls, ["projects", "all_undone"], view)
+            self.assertEqual([t["id"] for t in result["tasks"]], ["t4"], view)
+            self.assertEqual(result["tasks"][0]["project"], views.INBOX_NAME, view)
+
+    def test_a_project_outside_the_catalogue_still_falls_back_to_its_own_endpoint(self):
+        # A closed or shared project is absent from /project AND from /task/filter,
+        # so /project/<id>/data is the only way to see inside it.
         client = fixture()
-        result = views.collect(client, {}, view="project", project=INBOX)
-        self.assertEqual(client.calls, ["projects", "inbox_data"])
-        self.assertEqual([t["id"] for t in result["tasks"]], ["t4"])
-        self.assertEqual(result["tasks"][0]["project"], views.INBOX_NAME)
+        views.collect(client, {}, view="project", project="p3")
+        self.assertEqual(client.calls, ["projects", "all_undone", "project_data:p3"])
 
     def test_unknown_project_still_renders_with_a_blank_name(self):
         rows = views.collect(fixture(), {}, view="all", include_undated=True)["tasks"]

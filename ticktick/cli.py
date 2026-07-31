@@ -13,13 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import pathlib
 import re
 import sys
 from datetime import datetime, time as _time, timedelta, timezone
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
 from . import __version__, api, auth, config, dates, nlp, render, store, views
 from .errors import (
@@ -43,7 +40,7 @@ _PRIORITY_WORDS = {
 
 #: The spec's CLI spells the upcoming view `next7`; the frozen `views.VIEWS` spells it
 #: `next`. Accept both so neither document is a lie.
-_VIEW_ALIASES = {"next7": "next"}
+_VIEW_ALIASES = {"next7": "next", "upcoming": "next", "tomorrow7": "tomorrow"}
 
 #: A TickTick timestamp ends in a four-digit UTC offset. Anything date-shaped that does
 #: not is refused before it reaches the wire — see `_wire_date`.
@@ -67,11 +64,17 @@ def _emit(payload: dict) -> int:
     so it always gets JSON — there is no flag for it to forget and no way for a new
     call site to accidentally receive prose.
     """
+    # Keys beginning with an underscore are plumbing passed between helpers, never
+    # part of the contract the widget reads.
+    body = {k: v for k, v in payload.items() if not k.startswith("_")}
     if _OUTPUT["human"]:
-        sys.stdout.write(render.render(str(_OUTPUT["command"]), payload) + "\n")
+        text = render.render(str(_OUTPUT["command"]), body)
     else:
-        json.dump(payload, sys.stdout, ensure_ascii=False, default=str)
-        sys.stdout.write("\n")
+        # Serialised in full before anything is written. `json.dump` streams, so an
+        # encoding failure part-way through would leave a truncated object on stdout
+        # and the widget parsing half a payload.
+        text = json.dumps(body, ensure_ascii=False, default=str)
+    sys.stdout.write(text + "\n")
     sys.stdout.flush()
     return 0
 
@@ -208,6 +211,10 @@ def _build_parser() -> _Parser:
     p.add_argument("--priority", type=_priority, default=None, metavar="P")
     p.add_argument("--tag", action="append", default=None, metavar="TAG",
                    help="only tasks carrying this tag; repeatable (any-of)")
+    p.add_argument("--sort", default="list", choices=list(views.SORTS),
+                   help="row order, and therefore how the UI groups them: 'list' "
+                        "heads each group with its list name (TickTick's default), "
+                        "'time' with Overdue/Today/Tomorrow (default: list)")
     p.add_argument("--include-undated", action="store_true")
     p.add_argument("--limit", type=int, default=None, metavar="N")
     with_offline(p)
@@ -231,6 +238,9 @@ def _build_parser() -> _Parser:
     p.add_argument("--start", default=None, metavar="WHEN",
                    help="start date, for a task that spans a range")
     p.add_argument("--due", default=None, metavar="WHEN", help="natural language or a date")
+    p.add_argument("--due-default", default=None, metavar="WHEN",
+                   help="use this date only when the text carries none — how TickTick "
+                        "files a task added from inside Today or Next 7 Days")
     p.add_argument("--priority", type=_priority, default=None, metavar="P")
     p.add_argument("--content", default=None, metavar="TEXT")
     p.add_argument("--all-day", action="store_true")
@@ -257,6 +267,15 @@ def _build_parser() -> _Parser:
     p.add_argument("--remove-tag", action="append", default=None, metavar="TAG")
     p.add_argument("--parent", default=None, metavar="TASK_ID",
                    help="make this a subtask of another task ('' detaches it)")
+    p.add_argument("--remind", action="append", default=None, metavar="SPEC",
+                   help="replace the task's reminders; same spellings as `add --remind`, "
+                        "repeatable")
+    p.add_argument("--clear-remind", action="store_true",
+                   help="remove every reminder from the task")
+    p.add_argument("--repeat", default=None, metavar="RRULE",
+                   help="'daily', 'every 3 weeks', or a raw RRULE: value")
+    p.add_argument("--clear-repeat", action="store_true",
+                   help="stop the task repeating")
 
     p = with_project(cmd("move", "Move a task to another project.", _cmd_move))
     p.add_argument("taskId")
@@ -481,11 +500,20 @@ def _project_for(
     return _scan_for_task(client, cfg, task_id)
 
 
-def _sync(cfg: dict, state: dict, *, offline: bool = False) -> tuple[api.Client | None, dict]:
+def _sync(
+    cfg: dict,
+    state: dict,
+    *,
+    offline: bool = False,
+    queueing: bool = False,
+) -> tuple[api.Client | None, dict]:
     """Push whatever is queued, and report what happened.
 
     Called at the top of every mutation so a write attempted while offline is not
     merely queued but retried at the next opportunity, without needing a daemon.
+
+    `queueing` says the caller is about to apply a change locally, and decides what a
+    bad token means — see the two branches below. Reads leave it False.
     """
     info: dict[str, Any] = {"pending": store.pending(state), "synced": 0, "warning": ""}
     if offline:
@@ -494,11 +522,25 @@ def _sync(cfg: dict, state: dict, *, offline: bool = False) -> tuple[api.Client 
     try:
         client = _client(cfg)
     except AuthError:
-        if not state.get("fetched_at") and not store.pending(state):
-            raise
-        # Signed out with work still queued: keep it. Signing back in flushes it.
-        info["warning"] = "not signed in"
-        return None, info
+        if queueing and cfg.get("access_token"):
+            # A write by someone who *has* signed in, whose credential has since
+            # lapsed or been rejected. Exactly like being offline: apply it locally,
+            # queue it, and flush on the next successful sign-in. Raising here would
+            # abandon the change before it was ever written down — the one thing the
+            # outbox exists to prevent — for the most ordinary reason of all, a token
+            # that expired while the user was typing.
+            #
+            # Never signed in at all is different: there is no account for the queue
+            # to drain into, and "you are not signed in" is the only useful answer.
+            info["warning"] = "not signed in"
+            return None, info
+        # A read. Deliberately NOT swallowed into a warning the way a network failure
+        # is: a bad token is the one failure the user has to act on, and serving the
+        # cache with a footnote would leave the widget looking signed in and quietly
+        # frozen on last week's tasks. Raising makes it offer the sign-in affordance
+        # while keeping the rows already on screen, because a failed read never
+        # replaces them.
+        raise
     flushed = store.flush(state, client)
     info["synced"] = flushed["synced"]
     info["pending"] = flushed["remaining"]
@@ -516,9 +558,15 @@ def _push(client: api.Client | None, state: dict) -> dict:
     so failure here is a delay, not a loss — which is why nothing it raises escapes.
     """
     if client is None:
-        return {"pending": store.pending(state), "synced": 0}
+        return {"pending": store.pending(state), "synced": 0, "_idmap": {}}
     flushed = store.flush(state, client)
-    out: dict[str, Any] = {"pending": flushed["remaining"], "synced": flushed["synced"]}
+    out: dict[str, Any] = {
+        "pending": flushed["remaining"],
+        "synced": flushed["synced"],
+        # Underscored: internal plumbing for whichever command asked, stripped before
+        # anything is printed. Only `add` has any use for it.
+        "_idmap": flushed.get("idmap") or {},
+    }
     if flushed["error"]:
         out["warning"] = flushed["error"]
     if flushed["blocked"]:
@@ -546,7 +594,11 @@ def _read_source(
 
     if client is not None and (force or info["stale"]):
         try:
-            store.remember(state, client.all_undone(), client.projects())
+            # Folders come along for the ride: `views.groups` swallows anything the
+            # undocumented endpoint does, so this cannot turn a good read into a bad one.
+            store.remember(
+                state, client.all_undone(), client.projects(), views.groups(client)
+            )
             info["source"] = "network"
             info["stale"] = False
         except AuthError:
@@ -564,26 +616,9 @@ def _read_source(
     return store.CachedSource(state), info
 
 
-def _local_tz_name() -> str:
-    """The IANA zone name for this machine, or '' when it cannot be determined.
-
-    Python exposes no portable way to ask; TZ and the /etc/localtime symlink cover
-    every configuration Omarchy ships with. TickTick only uses `timeZone` to decide
-    what an all-day date means, so '' (field omitted) is a safe answer, not a broken one.
-    """
-    name = os.environ.get("TZ", "").strip().lstrip(":")
-    if not name:
-        try:
-            parts = pathlib.Path("/etc/localtime").resolve().parts
-            if "zoneinfo" in parts:
-                name = "/".join(parts[parts.index("zoneinfo") + 1:])
-        except OSError:
-            return ""
-    try:
-        ZoneInfo(name)
-    except Exception:
-        return ""
-    return name
+#: Lives in `dates` now, where the rest of the zone handling is; `now()` needs the
+#: same answer so that bucketing does not drift across a DST change.
+_local_tz_name = dates.local_zone_name
 
 
 def _when(text: str, label: str) -> tuple[datetime, bool]:
@@ -727,7 +762,7 @@ def _cmd_auth(args: argparse.Namespace) -> int:
     say = lambda message: print(message, file=sys.stderr)  # noqa: E731
     try:
         summary = auth.authorize(
-            client_id=args.client_id or cfg.get("client_id") or "",
+            client_id=args.client_id or cfg.get("client_id") or _ask_client_id(say),
             client_secret=args.client_secret or cfg.get("client_secret") or "",
             redirect_uri=args.redirect or cfg.get("redirect_uri") or auth.DEFAULT_REDIRECT,
             no_browser=args.no_browser,
@@ -747,6 +782,34 @@ def _cmd_auth(args: argparse.Namespace) -> int:
         say("Note: no Inbox id stored (nothing in your Inbox to read it from). "
             "Tasks still load.")
     return 0
+
+
+def _ask_client_id(say: Callable[[str], None]) -> str:
+    """Prompt for the app's client id, once, and remember it.
+
+    The browser flow is the button the widget offers first, and it lands in a terminal
+    of its own — so the one thing it cannot get from anywhere else may as well be
+    asked for here, rather than failing with instructions the user then has to carry
+    back to a shell. `authorize` persists what it is given, so this is asked once ever.
+
+    Not a TTY (a script, a pipe, a closed descriptor): return "" and let `authorize`
+    raise its usage error, which is an answer rather than a traceback.
+    """
+    if sys.stdin is None or not sys.stdin.isatty():
+        return ""
+    say("")
+    say("Browser sign-in needs a TickTick app of your own — TickTick issues no shared one.")
+    say("  1. open https://developer.ticktick.com/manage and click 'New App'")
+    say(f"  2. set its redirect URI to exactly {auth.DEFAULT_REDIRECT}")
+    say("  3. copy the Client ID it shows you")
+    say("")
+    say("No secret is needed; this uses PKCE. Leave it blank to cancel and paste an")
+    say("API token into the widget instead (Settings -> Account -> API Token).")
+    say("")
+    try:
+        return input("Client ID: ").strip()
+    except EOFError:
+        return ""
 
 
 def _cmd_login(args: argparse.Namespace) -> dict:
@@ -938,6 +1001,7 @@ def _cmd_tasks(args: argparse.Namespace) -> dict:
         tags=args.tag,
         include_undated=args.include_undated,
         limit=args.limit,
+        sort=args.sort,
     )
     _remember(cfg, result.pop("cache_dirty"))
     store.save_quietly(state)
@@ -1002,6 +1066,11 @@ def _cmd_add(args: argparse.Namespace) -> dict:
         due, all_day = _when(args.due, "--due")
     else:
         due, all_day = parsed.due, parsed.all_day
+    if due is None and args.due_default:
+        # Only when the user named no date themselves. TickTick does this too: a task
+        # typed into Today lands on today, which is what makes it appear where it was
+        # typed rather than in an undated list nobody is looking at.
+        due, all_day = _when(args.due_default, "--due-default")
     if due is not None:
         if args.all_day:
             all_day = True
@@ -1025,7 +1094,7 @@ def _cmd_add(args: argparse.Namespace) -> dict:
 
     cfg = config.load()
     state = store.load()
-    client, info = _sync(cfg, state, offline=args.offline)
+    client, info = _sync(cfg, state, offline=args.offline, queueing=True)
     # The catalogue comes out of the cache, so `#work` still resolves with no network.
     catalogue = views.catalogue(store.CachedSource(state), cfg)
     unresolved = ""
@@ -1050,14 +1119,13 @@ def _cmd_add(args: argparse.Namespace) -> dict:
     store.enqueue(state, {"op": "create", "taskId": temp, "projectId": pid, "task": draft})
     info.update(_push(client, state))
 
-    # After a successful push the cache holds the server's copy under its real id;
-    # after a failed one it still holds the draft. Either way, echo what is stored.
-    stored = _cached_task(state, temp) or draft
-    if not _cached_task(state, temp):
-        for task in store.replay(state):
-            if task.get("title") == draft.get("title") and not store.is_local_id(task.get("id")):
-                stored = task
-                break
+    # After a successful push the cache holds the server's copy under the id TickTick
+    # issued; after a failed one it still holds the draft under the local id. The
+    # flush reports the mapping, which is the only reliable way to say which task was
+    # just created — matching on the title would happily return a different task the
+    # user already had by that name.
+    real = (info.get("_idmap") or {}).get(temp, temp)
+    stored = _cached_task(state, real) or _cached_task(state, temp) or draft
     pid = str(stored.get("projectId") or pid)
     tid = str(stored.get("id") or "")
     if tid and pid and not store.is_local_id(tid):
@@ -1076,6 +1144,10 @@ def _cmd_add(args: argparse.Namespace) -> dict:
 def _cmd_edit(args: argparse.Namespace) -> dict:
     if args.clear_due and args.due:
         raise UsageError("--due and --clear-due contradict each other")
+    if args.clear_remind and args.remind:
+        raise UsageError("--remind and --clear-remind contradict each other")
+    if args.clear_repeat and args.repeat:
+        raise UsageError("--repeat and --clear-repeat contradict each other")
     changes: dict[str, Any] = {}
     if args.title is not None:
         changes["title"] = args.title
@@ -1093,20 +1165,38 @@ def _cmd_edit(args: argparse.Namespace) -> dict:
     if args.parent is not None:
         # "" detaches; the field has to be sent either way, so None is not usable here.
         changes["parentId"] = str(args.parent)
-    if not changes and not (args.move_to or args.tag or args.add_tag or args.remove_tag):
+    if args.repeat:
+        changes["repeatFlag"] = _repeat(args.repeat)
+    if args.clear_repeat:
+        changes["repeatFlag"] = None
+    if args.clear_remind:
+        changes["reminders"] = []
+    if not changes and not (args.move_to or args.tag or args.add_tag or args.remove_tag
+                            or args.remind):
         raise UsageError(
             "nothing to change — pass --title/--due/--start/--priority/--content/"
-            "--tag/--parent/--move-to"
+            "--tag/--parent/--remind/--repeat/--move-to"
         )
 
     cfg = config.load()
     state = store.load()
-    client, info = _sync(cfg, state, offline=args.offline)
+    client, info = _sync(cfg, state, offline=args.offline, queueing=True)
     pid = _project_for(client, state, cfg, args.taskId, args.project)
     task = _task_body(client, state, pid, args.taskId)
 
     if args.tag is not None or args.add_tag or args.remove_tag:
         changes["tags"] = _merge_tags(task.get("tags"), args.tag, args.add_tag, args.remove_tag)
+    if args.remind:
+        # The spelling of an offset depends on whether the task is all-day, and that
+        # may itself be changing in this same edit — so read it from `changes` first
+        # and only then from the task as it stands.
+        all_day = bool(changes.get("isAllDay", task.get("isAllDay")))
+        if not (changes.get("dueDate", task.get("dueDate"))):
+            raise UsageError(
+                "a reminder needs a due date — TickTick accepts reminders on an undated "
+                "task and then silently drops them; add --due first"
+            )
+        changes["reminders"] = [_reminder(spec, all_day=all_day) for spec in args.remind]
 
     if changes:
         # The whole task travels with the edit: TickTick has no PATCH, so the body
@@ -1201,14 +1291,31 @@ def _cmd_completed(args: argparse.Namespace) -> dict:
     rows.sort(key=lambda item: -item["completed"])  # most recently finished first
     if args.limit and args.limit > 0:
         rows = rows[: args.limit]
-    return {"tasks": rows, "days": days, "project": args.project or "", "count": len(rows)}
+    payload = {
+        "tasks": rows,
+        "days": days,
+        "project": args.project or "",
+        "count": len(rows),
+    }
+    # The badge counts what is still to do, and this command answers with what is
+    # already done — so carry the outstanding counts along, read out of the local cache
+    # at no request cost. Without them a widget parked on the Completed tab would keep
+    # whatever the badge happened to say when it got there. Omitted rather than sent as
+    # zeros when there is no cache to read: the widget only replaces counts it is given,
+    # so saying nothing leaves the last true answer standing.
+    state = store.load()
+    if state.get("fetched_at"):
+        payload["counts"] = views.collect(
+            store.CachedSource(state), cfg, view="all", include_undated=True
+        )["counts"]
+    return payload
 
 
 def _cmd_complete(args: argparse.Namespace) -> dict:
     """Finish a task locally, then tell TickTick — in that order, on purpose."""
     cfg = config.load()
     state = store.load()
-    client, info = _sync(cfg, state, offline=args.offline)
+    client, info = _sync(cfg, state, offline=args.offline, queueing=True)
     pid = _project_for(client, state, cfg, args.taskId, args.project)
     store.enqueue(state, {"op": "complete", "taskId": args.taskId, "projectId": pid})
     info.update(_push(client, state))
@@ -1219,7 +1326,7 @@ def _cmd_complete(args: argparse.Namespace) -> dict:
 def _cmd_delete(args: argparse.Namespace) -> dict:
     cfg = config.load()
     state = store.load()
-    client, info = _sync(cfg, state, offline=args.offline)
+    client, info = _sync(cfg, state, offline=args.offline, queueing=True)
     pid = _project_for(client, state, cfg, args.taskId, args.project)
     store.enqueue(state, {"op": "delete", "taskId": args.taskId, "projectId": pid})
     info.update(_push(client, state))
@@ -1287,7 +1394,7 @@ def _checklist(args: argparse.Namespace, action: str) -> dict:
     """
     cfg = config.load()
     state = store.load()
-    client, info = _sync(cfg, state, offline=getattr(args, "offline", False))
+    client, info = _sync(cfg, state, offline=getattr(args, "offline", False), queueing=True)
     pid = _project_for(client, state, cfg, args.taskId, args.project)
     task = _task_body(client, state, pid, args.taskId)
 
@@ -1568,8 +1675,9 @@ def _assertions() -> int:
           "closed projects are dropped and the Inbox is synthesised")
     check(result["projects"][1]["count"] == 3,
           "every project is counted off the one flat task list")
-    check(cfg["project_cache"]["t4"] == "inbox9" and result["cache_dirty"],
-          "the taskId->projectId cache is refreshed opportunistically")
+    check("project_cache" not in cfg,
+          "collect no longer mirrors task->project into the credential file; the "
+          "local task cache already holds it, and mirroring thrashed on big accounts")
 
     required = {
         "id", "projectId", "project", "projectColor", "title", "content", "bucket", "due",
@@ -1637,6 +1745,14 @@ def main(argv: list[str] | None = None) -> int:
     Returns 0 for every JSON-emitting subcommand, whether it succeeded or not: the
     caller reads `ok` out of the payload. Only `auth` and `selftest` return non-zero.
     """
+    # Task titles are arbitrary Unicode and the shell that spawns us may hand over a
+    # C locale, under which any emoji would raise UnicodeEncodeError mid-write.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, OSError, ValueError):
+            pass  # already wrapped by a test, or not reconfigurable; not fatal
+
     parser = _build_parser()
     try:
         args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))

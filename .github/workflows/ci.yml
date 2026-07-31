@@ -76,6 +76,12 @@ jobs:
         # QtObjects, so it flags valid members and typos identically.
         run: python tests/validate_qml_api.py
 
+      - name: QML presentation helpers
+        # qml/Model.js is pure, total JavaScript with no Qt in it, so it can be
+        # tested without a compositor — which is the only reason any of the QML
+        # side has automated coverage at all. Node's own runner, no packages.
+        run: node --test tests/model.test.js
+
   qml:
     name: QML syntax
     runs-on: ubuntu-latest

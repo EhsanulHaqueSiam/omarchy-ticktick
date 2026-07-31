@@ -16,6 +16,7 @@ before a request fails.
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import json
 import secrets
@@ -40,10 +41,25 @@ DEFAULT_REDIRECT = "http://localhost:8080/callback"
 CALLBACK_TIMEOUT = 300.0
 
 
+def _pkce() -> tuple[str, str]:
+    """A PKCE ``(verifier, challenge)`` pair, RFC 7636 S256.
+
+    PKCE is what lets a desktop client do the browser flow with no client secret.
+    A secret shipped inside a program installed on other people's machines is not a
+    secret, so the exchange proves possession a different way: a random verifier is
+    hashed into the authorization request and revealed only when redeeming the code.
+    An attacker who intercepts the code cannot spend it without the verifier.
+    """
+    verifier = secrets.token_urlsafe(64)[:128]
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
+
+
 def authorize(
     *,
     client_id: str,
-    client_secret: str,
+    client_secret: str = "",
     redirect_uri: str = DEFAULT_REDIRECT,
     no_browser: bool = False,
     timeout: float = CALLBACK_TIMEOUT,
@@ -63,23 +79,32 @@ def authorize(
     say = emit or (lambda _message: None)
     client_id = (client_id or "").strip()
     client_secret = (client_secret or "").strip()
-    if not client_id or not client_secret:
+    if not client_id:
         raise UsageError(
-            "client id and secret are required — create an app at "
-            "https://developer.ticktick.com/manage and pass --client-id/--client-secret"
+            "a client id is required — create an app at "
+            "https://developer.ticktick.com/manage and pass --client-id. "
+            "No secret is needed; the flow uses PKCE. Easier still: "
+            "`ticktick login` with a token from Settings -> Account -> API Token."
         )
+
+    # No secret means a public client, which is the honest description of anything
+    # installed on someone else's machine. PKCE replaces the secret.
+    verifier, challenge = _pkce()
+    use_pkce = not client_secret
 
     host, port, path = _split_redirect(redirect_uri)
     state = secrets.token_urlsafe(24)
-    url = f"{AUTHORIZE_URL}?" + urllib.parse.urlencode(
-        {
-            "client_id": client_id,
-            "scope": SCOPE,
-            "state": state,
-            "redirect_uri": redirect_uri,
-            "response_type": "code",
-        }
-    )
+    params = {
+        "client_id": client_id,
+        "scope": SCOPE,
+        "state": state,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+    }
+    if use_pkce:
+        params["code_challenge"] = challenge
+        params["code_challenge_method"] = "S256"
+    url = f"{AUTHORIZE_URL}?" + urllib.parse.urlencode(params)
 
     result: dict[str, str] = {}
     httpd = _serve(host, port, result, path=path, state=state)
@@ -104,7 +129,10 @@ def authorize(
         raise AuthError(f"no authorization code arrived within {int(timeout)}s")
 
     say("Exchanging the code for a token…")
-    payload = _exchange(client_id, client_secret, code, redirect_uri)
+    payload = _exchange(
+        client_id, client_secret, code, redirect_uri,
+        verifier=verifier if use_pkce else "",
+    )
     access_token = str(payload.get("access_token") or "")
     if not access_token:
         raise AuthError(f"token endpoint returned no access_token: {payload!r}")
@@ -400,27 +428,43 @@ def _page(heading: str, message: str, ok: bool) -> str:
 # --- token exchange ----------------------------------------------------------
 
 
-def _exchange(client_id: str, client_secret: str, code: str, redirect_uri: str) -> dict:
-    """Trade the authorization code for a bearer token (HTTP Basic, form-encoded)."""
-    body = urllib.parse.urlencode(
-        {
-            "code": code,
-            "grant_type": "authorization_code",
-            "scope": SCOPE,
-            "redirect_uri": redirect_uri,
-        }
-    ).encode("utf-8")
-    basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
+def _exchange(
+    client_id: str,
+    client_secret: str,
+    code: str,
+    redirect_uri: str,
+    *,
+    verifier: str = "",
+) -> dict:
+    """Trade the authorization code for a bearer token.
+
+    Two shapes, depending on how the client authenticated itself: a confidential
+    client sends HTTP Basic, a public one sends its `client_id` and the PKCE
+    `code_verifier` in the form body and no Authorization header at all.
+    """
+    fields = {
+        "code": code,
+        "grant_type": "authorization_code",
+        "scope": SCOPE,
+        "redirect_uri": redirect_uri,
+    }
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "User-Agent": USER_AGENT,
+    }
+    if verifier:
+        fields["client_id"] = client_id
+        fields["code_verifier"] = verifier
+    else:
+        basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {basic}"
+
     request = urllib.request.Request(
         TOKEN_URL,
-        data=body,
+        data=urllib.parse.urlencode(fields).encode("utf-8"),
         method="POST",
-        headers={
-            "Authorization": f"Basic {basic}",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-            "User-Agent": USER_AGENT,
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(request, timeout=30.0) as response:

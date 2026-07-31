@@ -103,6 +103,31 @@ class ParseTest(unittest.TestCase):
 
 
 class DstTest(unittest.TestCase):
+    def test_now_carries_a_zone_not_a_frozen_offset(self):
+        # `datetime.now().astimezone()` attaches the offset in force *today*. bucket()
+        # and label() convert due dates through `now.tzinfo`, so a frozen offset shows
+        # every timed task past the next transition an hour out, and lands anything
+        # near local midnight in the wrong day group.
+        clock = dates.now()
+        self.assertIsNotNone(clock.tzinfo)
+        self.assertNotEqual(
+            clock.replace(month=1, day=15).utcoffset(),
+            clock.replace(month=7, day=15).utcoffset(),
+            "Europe/Berlin has two offsets; a tzinfo showing one for both is frozen",
+        )
+
+    def test_a_due_date_across_the_transition_keeps_its_own_hour(self):
+        # Sat 24 Oct 2026 is CEST; the clocks go back overnight on the 25th.
+        saturday = dates.now().replace(2026, 10, 24, 12, 0, 0, 0)
+        late_sunday = dates.parse("2026-10-25T22:30:00+0000")  # 23:30 CET
+        self.assertEqual(
+            dates.bucket(late_sunday, all_day=False, now=saturday, upcoming_days=7),
+            "tomorrow",
+        )
+        self.assertEqual(dates.label(late_sunday, all_day=False, now=saturday), "Sun 23:30")
+        november = dates.parse("2026-11-15T08:00:00+0000")  # 09:00 CET
+        self.assertEqual(dates.label(november, all_day=False, now=saturday), "15 Nov 09:00")
+
     def test_ambiguous_local_hour_keeps_two_distinct_instants(self):
         # 2026-10-25 02:30 happens twice in Berlin; both spellings must survive.
         first = dates.parse("2026-10-25T00:30:00+0000")

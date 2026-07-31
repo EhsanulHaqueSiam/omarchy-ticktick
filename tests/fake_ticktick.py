@@ -41,8 +41,10 @@ class Fake:
     def __init__(self) -> None:
         self.inbox_id = "inbox777"
         self.projects: list[dict] = [
+            # `groupId` is the folder a list sits in; TickTick sends it on /project,
+            # so nothing has to ask for it separately.
             {"id": "p-work", "name": "Work", "color": "#F18181", "sortOrder": 1,
-             "viewMode": "list", "kind": "TASK", "permission": "write"},
+             "viewMode": "list", "kind": "TASK", "permission": "write", "groupId": "g-study"},
             {"id": "p-home", "name": "Home", "color": "#4CAF50", "sortOrder": 2,
              "viewMode": "list", "kind": "TASK", "permission": "write"},
             {"id": "p-old", "name": "Archive", "color": "", "closed": True, "sortOrder": 3},
@@ -52,7 +54,9 @@ class Fake:
             {"name": "urgent", "label": "urgent", "color": "#E24A4A", "sortOrder": 1, "type": 1},
             {"name": "errand", "label": "Errand", "color": "", "parent": "", "sortOrder": 2, "type": 1},
         ]
-        self.groups: list[dict] = []
+        self.groups: list[dict] = [
+            {"id": "g-study", "name": "University work", "sortOrder": 1},
+        ]
 
         #: Requests seen, as ``(method, path)`` — lets a test assert on call counts,
         #: which is how the "one request per refresh" promise stays true.
