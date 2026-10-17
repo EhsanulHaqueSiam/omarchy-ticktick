@@ -49,6 +49,11 @@ TickTick's own rules, in the bar.
 
 ### Fixed
 
+- **Popup text stays readable with a transparent bar.** The card took its text colour from
+  `bar.barForeground`, which a transparent bar samples from the wallpaper. Over a bright one it
+  flips to the theme background, the same colour the card is painted in, so task titles, tab
+  labels and headers vanished. The card now uses `Color.popups.text`, like Omarchy's own popups.
+  The bar glyph still follows the bar.
 - **The checkbox no longer ticks itself under the cursor.** The box previewed what
   <kbd>Enter</kbd> would do by filling in, which is indistinguishable from a task that is
   actually finished — every row you pointed at read as already done. The box now says what the

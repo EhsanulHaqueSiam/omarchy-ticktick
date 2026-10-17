@@ -35,7 +35,12 @@ Panel {
   // accepts exactly one handler. Ours adds refresh/add/count, so Panel's must stand down.
   manageIpc: false
 
-  readonly property color foreground: bar ? bar.barForeground : Color.foreground
+  // Everything this colours lives inside the popup card, which is painted with
+  // Color.popups.background. The bar's own glyph and badge are drawn by WidgetButton,
+  // which reads bar.barForeground itself. bar.barForeground is the wrong source here:
+  // with a transparent bar it is sampled from the wallpaper and flips to the theme
+  // background colour over a bright one, which made titles the same colour as the card.
+  readonly property color foreground: Color.popups ? Color.popups.text : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.45)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
